@@ -1,19 +1,50 @@
-﻿using System;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using System.Collections.Generic;
+using Zenject;
 
 namespace ShootEmUp {
 
-    public class GameCycle : MonoBehaviour {
+    public class GameCycle : ILateTickable, ITickable, IFixedTickable {
         private List<IGameListener> _gameListeners = new();
- 
+
+        private List<IGameLateUpdateListener> _gameLateUpdateListeners = new();
+        private List<IGameUpdateListener> _gameUpdateListeners = new();
+        private List<IGameFixedUpdateListener> _gameFixedUpdateListeners = new();
+
+        public GameCycle() {
+            CurrentState = GameStates.InitializingComponents;
+        }
+
+        public GameStates CurrentState { get; private set; } 
+
+        public void SetCurrentState(GameStates state) {
+            CurrentState = state;
+        }
+
         public void Add(IGameListener listener) {
             if (_gameListeners.Contains(listener) == false)
                 _gameListeners.Add(listener);
+
+            if (listener is IGameLateUpdateListener gameLateUpdateListener) {
+                _gameLateUpdateListeners.Add(gameLateUpdateListener);
+                return;
+            }
+
+            if (listener is IGameUpdateListener gameUpdateListener) {
+                _gameUpdateListeners.Add(gameUpdateListener);
+                return;
+            }
+
+            if (listener is IGameFixedUpdateListener gameFixedUpdateListener) {
+                _gameFixedUpdateListeners.Add(gameFixedUpdateListener);
+                return;
+            }
         }
 
         public void StartGame() {
             if (_gameListeners.Count == 0)
+                return;
+
+            if (CurrentState != GameStates.WaitingToStart)
                 return;
 
             foreach (var iListener in _gameListeners) {
@@ -21,6 +52,8 @@ namespace ShootEmUp {
                 if (iListener is IGameStartListener gameStartListener)
                     gameStartListener.OnStartGame();
             }
+
+            SetCurrentState(GameStates.Playing);
         }
 
         public void PauseGame() {
@@ -32,6 +65,14 @@ namespace ShootEmUp {
                 if (iListener is IGamePauseListener gamePauseListener)
                     gamePauseListener.OnPauseGame();
             }
+
+            if (CurrentState == GameStates.Playing) {
+                SetCurrentState(GameStates.Pause); 
+                return;
+            }
+
+            if (CurrentState == GameStates.Pause)
+                SetCurrentState(GameStates.Playing);
         }
 
         public void FinishGame() {
@@ -44,42 +85,46 @@ namespace ShootEmUp {
                 if (iListener is IGameFinishListener gameFinishListener)
                     gameFinishListener.OnFinishGame();
             }
+
+            SetCurrentState(GameStates.WaitingToStart);
         }
 
-        private void LateUpdate() {
-            if (_gameListeners.Count == 0)
+        public void LateTick() {
+            if (CurrentState == GameStates.InitializingComponents)
                 return;
 
-            foreach (var iListener in _gameListeners) {
+            if (_gameLateUpdateListeners.Count == 0)
+                return;
 
-                if (iListener is IGameLateUpdateListener gameLateUpdateListener)
-                    gameLateUpdateListener.OnLateUpdateGame();
+            foreach (var iListener in _gameLateUpdateListeners) {
+                iListener.OnLateUpdateGame();
             }
         }
 
-        private void Update() {
-            if (_gameListeners.Count == 0)
+        public void Tick() {
+            if (CurrentState == GameStates.InitializingComponents)
                 return;
 
-            foreach (var iListener in _gameListeners) {
+            if (_gameUpdateListeners.Count == 0)
+                return;
 
-                if (iListener is IGameUpdateListener gameUpdateListener)
-                    gameUpdateListener.OnUpdateGame();
-
+            foreach (var iListener in _gameUpdateListeners) {
+                iListener.OnUpdateGame();
             }
         }
 
-        private void FixedUpdate() {
-            if (_gameListeners.Count == 0)
+        public void FixedTick() {
+            if (CurrentState == GameStates.InitializingComponents)
                 return;
 
-            foreach (var iListener in _gameListeners) {
+            if (_gameFixedUpdateListeners.Count == 0)
+                return;
 
-                if (iListener is IGameFixedUpdateListener gameFixedUpdateListener)
-                    gameFixedUpdateListener.OnFixedUpdateGame();
-
+            foreach (var iListener in _gameFixedUpdateListeners) {
+                iListener.OnFixedUpdateGame();
             }
         }
+
     }
 }
 

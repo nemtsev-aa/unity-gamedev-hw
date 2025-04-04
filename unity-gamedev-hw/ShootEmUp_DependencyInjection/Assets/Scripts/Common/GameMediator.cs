@@ -9,16 +9,17 @@ namespace ShootEmUp {
         private Character _character;
         private InputManager _input;
 
-        public GameMediator(Character character, InputManager input) {
+        public GameMediator(GameCycle gameCycle, Character character, InputManager input) {
+            _gameCycle = gameCycle;
             _character = character;
             _input = input;
         }
 
-        public void SetManagers(GameCycle gameCycle, UIManager uIManager) {
-            _gameCycle = gameCycle;
+        public void Init(UIManager uIManager) {
             _uIManager = uIManager;
-
             SubscribeToUIEvents();
+
+            _gameCycle.SetCurrentState(GameStates.WaitingToStart);
         }
 
         public void OnStartGame() {

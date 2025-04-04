@@ -4,15 +4,20 @@ using Zenject;
 public sealed class GameplayInstaller : MonoInstaller {
 
     public override void InstallBindings() {
-        BindGameCycleInstaller();
+        BindGameCycle();
         BindGameMediator();
+        BindGameCycleInstaller();
     }
 
-    private void BindGameCycleInstaller() {
-        Container.Bind<GameCycleInstaller>().AsSingle();
+    private void BindGameCycle() {
+        Container.BindInterfacesAndSelfTo<GameCycle>().AsSingle();
     }
 
     private void BindGameMediator() {
         Container.Bind<GameMediator>().AsSingle();
+    }
+
+    private void BindGameCycleInstaller() {
+        Container.Bind<GameCycleInstaller>().AsSingle().NonLazy();
     }
 }
