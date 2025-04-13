@@ -1,0 +1,17 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a7ee8dd7343a0284580fea06ea173c8d, type: 3}
+  m_Name: CharacterPopupConfig (2)
+  m_EditorClassIdentifier: 
+  <UserInfoConfig>k__BackingField: {fileID: 11400000, guid: 5310a2856df07e84caa3de541cc65eea, type: 2}
+  <PlayerLevelConfig>k__BackingField: {fileID: 11400000, guid: 5ed45faa3f144b6469d4e168b6f9cd81, type: 2}
+  <StatConfigs>k__BackingField: {fileID: 11400000, guid: d0b832105a5bbc647905f43d014ccd69, type: 2}

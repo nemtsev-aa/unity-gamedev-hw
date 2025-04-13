@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fccae0e8e4713ca4fb6d9076b82e54cf, type: 3}
+  m_Name: CharacterStatConfigs (3)
+  m_EditorClassIdentifier: 
+  <Configs>k__BackingField:
+  - <Name>k__BackingField: Move Speed
+    <Value>k__BackingField: 30
+  - <Name>k__BackingField: Intelligence
+    <Value>k__BackingField: 95
+  - <Name>k__BackingField: Stamina
+    <Value>k__BackingField: 35
+  - <Name>k__BackingField: Damage
+    <Value>k__BackingField: 90
+  - <Name>k__BackingField: Dexterity
+    <Value>k__BackingField: 35
+  - <Name>k__BackingField: Regeneration
+    <Value>k__BackingField: 10
