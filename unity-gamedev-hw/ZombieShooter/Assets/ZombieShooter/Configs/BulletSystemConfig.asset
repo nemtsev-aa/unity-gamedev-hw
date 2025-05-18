@@ -1,0 +1,18 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a026e98be6d84d46a35838af6f2be66, type: 3}
+  m_Name: BulletSystemConfig
+  m_EditorClassIdentifier: 
+  <Prefab>k__BackingField: {fileID: 8073724833491009500, guid: 2214923e97d9cdb4e96c2d8f3b7a320f,
+    type: 3}
+  <InitialPoolCount>k__BackingField: 5
+  <SpawnPeriod>k__BackingField: 0.1

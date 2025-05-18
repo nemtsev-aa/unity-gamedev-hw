@@ -1,0 +1,186 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 44bae1cf0fb645f197e54e0bd53a7b2f, type: 3}
+  m_Name: EntityValueSettings
+  m_EditorClassIdentifier: 
+  local: 0
+  namespace: Atomic.Entities
+  directoryPath: Assets/ZombeShooter/Codegen/Atomic/API
+  suffix: API
+  imports:
+  - Atomic.Elements
+  - AtomicFramework.ZombieShooter
+  - System.Collections.Generic
+  - AtomicFramework.BulletSystem
+  - AtomicFramework.View.Visual
+  - AtomicFramework.Effects
+  - AtomicFramework.View.VFX
+  - AtomicFramework.View.SFX
+  - AtomicFramework.RotationCompanent
+  - ZombieShooter.SceneObjects
+  - AtomicFramework.CameraFollowSystem
+  - AtomicFramework.InputSystem
+  categories:
+  - name: Life
+    indexes:
+    - id: 1
+      name: HitPoints
+      type: ReactiveVariable<float>
+    - id: 2
+      name: IsDeath
+      type: ReactiveVariable<bool>
+    - id: 3
+      name: IsDestroy
+      type: BaseEvent<IEntity>
+    - id: 4
+      name: TakeDamageAction
+      type: BaseEvent<float>
+  - name: Move
+    indexes:
+    - id: 5
+      name: Root
+      type: Transform
+    - id: 6
+      name: MoveSpeed
+      type: ReactiveVariable<float>
+    - id: 7
+      name: MoveDirection
+      type: ReactiveVariable<Vector3>
+    - id: 8
+      name: IsMoving
+      type: ReactiveVariable<bool>
+    - id: 9
+      name: CanMove
+      type: IValue<bool>
+  - name: Rotate
+    indexes:
+    - id: 10
+      name: RotateSpeed
+      type: float
+    - id: 11
+      name: IsRotating
+      type: ReactiveVariable<bool>
+    - id: 12
+      name: RotationModes
+      type: RotationModes
+    - id: 13
+      name: SmoothTime
+      type: float
+    - id: 40
+      name: CanRotate
+      type: IValue<bool>
+  - name: Attack
+    indexes:
+    - id: 14
+      name: TargetTransform
+      type: ReactiveVariable<Transform>
+    - id: 15
+      name: AttackRequest
+      type: IEvent
+    - id: 16
+      name: AttackAction
+      type: IEvent
+    - id: 17
+      name: AttackEvent
+      type: IEvent<Bullet>
+    - id: 18
+      name: CanAttack
+      type: IValue<bool>
+    - id: 19
+      name: CanMeleeAttack
+      type: IValue<bool>
+    - id: 20
+      name: CanRangeAttack
+      type: IValue<bool>
+    - id: 21
+      name: TargetChanged
+      type: IEvent<Transform>
+    - id: 44
+      name: AttackTerminate
+      type: IEvent
+  - name: RangeAttack
+    indexes:
+    - id: 22
+      name: CurrentBulletAmount
+      type: ReactiveVariable<int>
+    - id: 23
+      name: MaxBulletAmount
+      type: ReactiveVariable<int>
+    - id: 24
+      name: IsWithinReach
+      type: ReactiveVariable<bool>
+    - id: 25
+      name: FirePoint
+      type: FirePoint
+    - id: 26
+      name: BulletPrefab
+      type: Bullet
+    - id: 43
+      name: PointerPosition
+      type: ReactiveVariable<Vector3>
+  - name: AttackParameters
+    indexes:
+    - id: 27
+      name: Damage
+      type: int
+    - id: 28
+      name: Range
+      type: float
+    - id: 29
+      name: Delay
+      type: float
+  - name: Animation
+    indexes:
+    - id: 30
+      name: Animator
+      type: Animator
+    - id: 31
+      name: AnimationDispatcher
+      type: AnimationDispatcher
+  - name: VFX
+    indexes:
+    - id: 32
+      name: VFXCollection
+      type: List<VFXData>
+  - name: SFX
+    indexes:
+    - id: 33
+      name: AudioSource
+      type: AudioSource
+    - id: 34
+      name: SFXCollection
+      type: List<SFXData>
+  - name: UnitScaner
+    indexes:
+    - id: 35
+      name: ScanRadius
+      type: float
+    - id: 36
+      name: ScanInreval
+      type: float
+    - id: 37
+      name: ScanerLayerMask
+      type: LayerMask
+    - id: 38
+      name: CanScane
+      type: ReactiveVariable<bool>
+    - id: 39
+      name: ClosestUnit
+      type: ReactiveVariable<Unit>
+  - name: Effects
+    indexes:
+    - id: 41
+      name: StunAction
+      type: IEvent<bool>
+    - id: 42
+      name: SpeedBoostAction
+      type: IEvent<bool>

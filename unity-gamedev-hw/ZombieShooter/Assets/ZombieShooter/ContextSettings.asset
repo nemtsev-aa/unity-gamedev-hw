@@ -1,0 +1,123 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e76fb309170c43a099373e6806c27f2b, type: 3}
+  m_Name: ContextSettings
+  m_EditorClassIdentifier: 
+  <Inactive>k__BackingField: 0
+  categories:
+  - Name: GameContext
+    Namespace: Atomic.Contexts
+    DirectoryPath: Assets/ZombeShooter/Codegen/Atomic/API
+    ClassSuffix: API
+    Imports:
+    - Atomic.Entities
+    - Atomic.Elements
+    - AtomicFramework.Effects
+    - AtomicFramework.EnemySystem
+    - AtomicFramework.EnemyPointerSystem
+    - AtomicFramework.ZombieShooter
+    - ZombieShooter.SceneObjects
+    - ZombieShooter.GameCycleSystem
+    items:
+    - id: 1
+      name: ContainersPresenter
+      type: ContainersPresenter
+    - id: 6
+      name: EnemySystemConfig
+      type: EnemySystemConfig
+    - id: 7
+      name: EnemyPositions
+      type: EnemyPositions
+    - id: 8
+      name: EnemyConfig
+      type: EnemyConfig
+    - id: 9
+      name: EnemyFactory
+      type: EnemyFactory
+    - id: 10
+      name: EnemyPool
+      type: EnemyPool
+    - id: 11
+      name: EnemyManager
+      type: EnemyManager
+    - id: 12
+      name: PointerIconPrefab
+      type: PointerIcon
+    - id: 19
+      name: GameCycle
+      type: GameCycle
+    - id: 20
+      name: GameStateChangeAction
+      type: IEvent<GameStates>
+  - Name: Character
+    Namespace: Atomic.Contexts
+    DirectoryPath: Assets/ZombeShooter/Codegen/Atomic/API
+    ClassSuffix: API
+    Imports:
+    - Atomic.Entities
+    - Atomic.Elements
+    - AtomicFramework.ZombieShooter
+    - AtomicFramework.InputSystem
+    - AtomicFramework.CameraFollowSystem
+    - ZombieShooter.SceneObjects
+    items:
+    - id: 2
+      name: Character
+      type: SceneEntity
+    - id: 3
+      name: InputConfig
+      type: InputConfig
+    - id: 4
+      name: InputController
+      type: InputController
+    - id: 5
+      name: CameraConfig
+      type: CameraConfig
+    - id: 13
+      name: Weapon
+      type: SceneEntity
+    - id: 14
+      name: CanAttack
+      type: IValue<bool>
+    - id: 21
+      name: CharacterConfig
+      type: CharacterConfig
+    - id: 22
+      name: CharactreCreaetEvent
+      type: IEvent
+  - Name: Weapon
+    Namespace: Atomic.Contexts
+    DirectoryPath: Assets/ZombeShooter/Codegen/Atomic/API
+    ClassSuffix: API
+    Imports:
+    - AtomicFramework.BulletSystem
+    - AtomicFramework.ZombieShooter
+    items:
+    - id: 15
+      name: BulletSystemConfig
+      type: BulletSystemConfig
+    - id: 16
+      name: BulletConfig
+      type: BulletConfig
+    - id: 17
+      name: BulletSystemData
+      type: BulletSystemData
+  - Name: EffectSystem
+    Namespace: Atomic.Contexts
+    DirectoryPath: Assets/ZombeShooter/Codegen/Atomic/API
+    ClassSuffix: API
+    Imports:
+    - AtomicFramework.Effects
+    items:
+    - id: 18
+      name: EffectSystemConfig
+      type: EffectSystemConfig
