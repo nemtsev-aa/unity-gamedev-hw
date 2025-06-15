@@ -1,0 +1,43 @@
+using System;
+using UnityEngine;
+using Sirenix.OdinInspector;
+
+namespace UpgradesSystem.Core {
+
+    [Serializable]
+    public sealed class UpgradePriceTable {
+        [Space, SerializeField]
+        private int basePrice;
+
+        [ListDrawerSettings(OnBeginListElementGUI = "DrawLevels")]
+        [Space, SerializeField] private int[] levels;
+
+        public int GetPrice(int level) {
+            var index = level - 1;
+            index = Mathf.Clamp(index, 0, this.levels.Length - 1);
+            
+            return levels[index];
+        }
+
+        private void DrawLevels(int index) {
+            GUILayout.Space(8);
+            GUILayout.Label($"Level #{index + 1}");
+        }
+
+        public void OnValidate(int maxLevel) {
+            EvaluatePriceTable(maxLevel);
+        }
+
+        private void EvaluatePriceTable(int maxLevel) {
+            var table = new int[maxLevel];
+            table[0] = new int();
+            
+            for (var level = 2; level <= maxLevel; level++) {
+                var price = basePrice * level;
+                table[level - 1] = price;
+            }
+
+            levels = table;
+        }
+    }
+}
