@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fd7c4a25972a9d4cbec5983a65f57e2, type: 3}
+  m_Name: Item (ShieldBlue)
+  m_EditorClassIdentifier: 
+  _prototype:
+    ID: item_blue_shield
+    Flags: 4
+    Metadata:
+      <Name>k__BackingField: Blue Shield
+      <Description>k__BackingField: Description
+      <Icon>k__BackingField: {fileID: 21300000, guid: caf67c7f9fbe5124a94a8986311fe598, type: 3}
+    Components:
+    - rid: 8614585806008352846
+    - rid: 8614585806008352863
+  references:
+    version: 2
+    RefIds:
+    - rid: 8614585806008352846
+      type: {class: EquippableItemComponent, ns: InventorySystem.ItemComponents, asm: HW10Assembly}
+      data:
+        <Type>k__BackingField: 2
+        <RequiredSlots>k__BackingField: 1
+    - rid: 8614585806008352863
+      type: {class: IntelligenceItemComponent, ns: InventorySystem.ItemComponents, asm: HW10Assembly}
+      data:
+        _intelligence: 150

@@ -1,0 +1,20 @@
+{
+    "name": "EqiupmentTests",
+    "rootNamespace": "",
+    "references": [
+        "GUID:fe85157e44480e443a2f8f274f4162bc"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
