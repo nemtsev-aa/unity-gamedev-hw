@@ -7,6 +7,6 @@
 ## Основные элементы:
 - **InventoryTests** - тесты инвентаря.
 - **EquipmentServiceTests** - тесты сервиса экипировки.
-- **EquipmentEffectObserverTests ** - тесты системы применения/отмены эффектов экипировки. 
+- **EquipmentEffectObserverTests** - тесты системы применения/отмены эффектов экипировки. 
 
 ### Демонстрация: https://cloud.mail.ru/public/GJUe/Q1ZZMsNsb
