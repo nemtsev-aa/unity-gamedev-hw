@@ -22,7 +22,8 @@ namespace BehaviorTree.PlayerVisualSubSystem {
         }
 
         public void ShowAnimation(PlayerAnimatorStates state) {
-            _animator.SetFloat(STATE_INDEX, _animationDictionary[state]);
+            float stateValue = _animationDictionary[state];
+            _animator.SetFloat(STATE_INDEX, stateValue);
         }
     }
 }

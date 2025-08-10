@@ -1,7 +1,7 @@
 ﻿using BehaviorTree.PlayerVisualSubSystem;
 
 namespace BehaviorTree.PlayerCoreSubsystem {
-    
+
     public sealed class PlayerMediator {
         private const string STATE_INDEX = "StateIndex";
 
@@ -17,27 +17,42 @@ namespace BehaviorTree.PlayerCoreSubsystem {
         }
 
         public void Update(float deltaTime) {
+            ShowCurrentAnimation();
+        }
 
+        private void ShowCurrentAnimation() {
+            var haveTarget = CheckCurrentTarget();
             var currentVelocity = GetCurrentVelocity();
             var cargoAmount = GetCargoAmount();
-            var animatorState = GetAnimatorState();
 
-            ShowVillagerAxe(animatorState == 1f);
+            ShowCurrentTools(haveTarget);
+
+            if (haveTarget == true) {
+
+                if (_visual.Animator.GetFloat(STATE_INDEX) != 1f)
+                    _visual.SetPlayerAnimatorStates(PlayerAnimatorStates.Felling);
+                
+                return;
+            }
 
             if (currentVelocity == 0) {
                 _visual.SetPlayerAnimatorStates(PlayerAnimatorStates.Idle);
                 return;
             }
 
-            if (currentVelocity > 0 && cargoAmount == 0) {
-                _visual.SetPlayerAnimatorStates(PlayerAnimatorStates.MoveToForest);
-                return;
-            }
+            if (currentVelocity > 0) {
 
-            if (currentVelocity > 0 && cargoAmount > 0) {
+                if (cargoAmount == 0) {
+                    _visual.SetPlayerAnimatorStates(PlayerAnimatorStates.MoveToForest);
+                    return;
+                }
+
                 _visual.SetPlayerAnimatorStates(PlayerAnimatorStates.Delivery);
-                return;
             }
+        }
+
+        private bool CheckCurrentTarget() {
+            return (_core.Feller.Target != null);
         }
 
         private float GetCurrentVelocity() {
@@ -48,16 +63,13 @@ namespace BehaviorTree.PlayerCoreSubsystem {
             return _core.Inventory.CurrentAmount;
         }
 
-        private float GetAnimatorState() {
-            return _visual.Animator.GetFloat(STATE_INDEX); 
-        }
-
         private void ShowInventoryVisual(bool status) {
             _visual.InventoryVisual.gameObject.SetActive(status);
         }
 
-        private void ShowVillagerAxe(bool status) {
+        private void ShowCurrentTools(bool status) {
             _visual.VillagerAxe.gameObject.SetActive(status);
         }
+
     }
 }

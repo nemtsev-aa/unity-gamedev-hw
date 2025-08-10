@@ -2,6 +2,7 @@
 using UnityEngine;
 using FarmingSystem;
 using Conveyors.Entity;
+using UnityEngine.SceneManagement;
 
 namespace GameplaySystem {
 
@@ -28,6 +29,17 @@ namespace GameplaySystem {
 
         private void InitFellingZone() {
             _fellingZone.InitTrees();
+        }
+
+        void Update() {
+
+            if (Input.GetKeyDown(KeyCode.R) == true) 
+                ReloadCurrentScene();
+        }
+
+        public void ReloadCurrentScene() {
+            int currentSceneIndex = SceneManager.GetActiveScene().buildIndex;
+            SceneManager.LoadScene(currentSceneIndex);
         }
     }
 }

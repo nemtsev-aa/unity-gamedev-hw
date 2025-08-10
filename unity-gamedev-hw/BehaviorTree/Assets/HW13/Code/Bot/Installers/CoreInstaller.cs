@@ -14,6 +14,10 @@ namespace BehaviorTree.Bot {
 
         public void Install(DiContainer container, BotBrainData brainData) {
 
+            container.BindInstance(_player)
+                .AsSingle()
+                .NonLazy();
+
             _bot.Init(brainData, _player);
 
             container.BindInstance(_bot)

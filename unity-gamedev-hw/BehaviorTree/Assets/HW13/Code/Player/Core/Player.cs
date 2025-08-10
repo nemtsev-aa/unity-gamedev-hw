@@ -14,6 +14,7 @@ namespace BehaviorTree.PlayerCoreSubsystem {
         public void Init() {
             Core.Init(Config);
             Visual.Init();
+            UI.Init(Core);
 
             Mediator = new PlayerMediator(Core, Visual);
         }

@@ -9,14 +9,23 @@ namespace BehaviorTree.PlayerVisualSubSystem {
         [field: SerializeField] public GameObject VillagerAxe { get; private set; }
         [field: SerializeField] public InventoryCompanentVisual InventoryVisual { get; private set; }
 
+        public bool AttackTimeOut { get; private set; } = false;
+
         private VisualBehaviour _visualBehaviour;
+        private PlayerAnimatorStates _currentState;
 
         public void Init() {
             _visualBehaviour = new VisualBehaviour(Animator);
         }
 
         public void SetPlayerAnimatorStates(PlayerAnimatorStates state) {
-            _visualBehaviour.ShowAnimation(state);
+
+            if (_currentState == state)
+                return;
+
+            _currentState = state;
+            Debug.Log($"PlayerVisual: CurrentState {_currentState}");
+            _visualBehaviour.ShowAnimation(_currentState);
         }
     }
 }

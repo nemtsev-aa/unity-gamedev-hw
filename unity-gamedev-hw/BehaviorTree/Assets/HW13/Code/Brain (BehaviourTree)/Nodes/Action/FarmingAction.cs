@@ -1,7 +1,7 @@
 ﻿using MBT;
 using UnityEngine;
 using FarmingSystem;
-using BehaviorTree.PlayerVisualSubSystem;
+using BehaviorTree.PlayerCompanents;
 
 namespace BehaviorTree.Brain {
 
@@ -13,13 +13,13 @@ namespace BehaviorTree.Brain {
         [Space, SerializeField] private BoolReference _showDebugMessage;
 
         private BotBrainData _botBrainData;
-        private PlayerVisual _playerVisual;
+        private FellerCompanent _feller;
 
         private bool _isEntered = false;
 
-        private bool _farmingStart = false;
+        private bool _fellingStart = false;
         private bool _applyDamage = false;
-        private bool _farmingEnd = false;
+        private bool _fellingEnd = false;
 
         private ResourceSpot Source => _botBrainData.NearestResourceSource.CurrentValue;
 
@@ -32,8 +32,9 @@ namespace BehaviorTree.Brain {
             ResetSequence();
 
             _botBrainData = _dataReference.Value;
-            _playerVisual = _playerReference.Value.Visual;
-            _playerVisual.Dispatcher.EventReceived += OnEventReceived;
+            _feller = _playerReference.Value.Core.Feller;
+            _feller.ActionCompleted += OnActionCompleted;
+            _feller.Activate(true);
 
             _isEntered = true;
 
@@ -55,8 +56,10 @@ namespace BehaviorTree.Brain {
         public override void OnExit() {
             base.OnExit();
 
-            _playerVisual.Dispatcher.EventReceived -= OnEventReceived;
+            _feller.ActionCompleted -= OnActionCompleted;
+            _feller.Activate(false);
             _isEntered = false;
+
             ResetSequence();
 
             if (_showDebugMessage.Value == true)
@@ -64,10 +67,15 @@ namespace BehaviorTree.Brain {
         }
 
         private NodeResult FarmingProcessHandle() {
-            _botBrainData.SwitchBotState(BotStates.Farming);
-            _playerVisual.SetPlayerAnimatorStates(PlayerAnimatorStates.Felling);
 
-            if (_farmingStart == false || _applyDamage == false || _farmingEnd == false)
+            if (_botBrainData.BotState.CurrentValue != BotStates.Farming) {
+                _botBrainData.SwitchBotState(BotStates.Farming);
+                _fellingStart = true;
+            }
+
+            FellingExecute();
+
+            if (_fellingStart == false || _applyDamage == false || _fellingEnd == false)
                 return NodeResult.running;
 
             if (_showDebugMessage.Value == true)
@@ -76,35 +84,23 @@ namespace BehaviorTree.Brain {
             return NodeResult.success;
         }
 
-        private void OnEventReceived(string eventName) {
+        private void FellingExecute() {
 
-            switch (eventName) {
-                case "FarmingStart":
-                    _farmingStart = true;
-                    break;
+            if (_feller.IsCooldown == true) 
+                return;
 
-                case "ApplyDamage":
-                    Source.TakeDamage();
-                    _applyDamage = true;
-                    break;
+            _feller.SetTarget(Source);
+        }
 
-                case "FarmingEnd":
-                    _farmingEnd = true;
-                    break;
-
-                default:
-
-                    if (_showDebugMessage.Value == true)
-                        Debug.Log($"<color=red> Invalid EventName: [{eventName}]");
-
-                    break;
-            }
+        private void OnActionCompleted() {
+            _applyDamage = true;
+            _fellingEnd = true;
         }
 
         private void ResetSequence() {
-            _farmingStart = false;
+            _fellingStart = false;
             _applyDamage = false;
-            _farmingEnd = false;
+            _fellingEnd = false;
         }
     }
 }

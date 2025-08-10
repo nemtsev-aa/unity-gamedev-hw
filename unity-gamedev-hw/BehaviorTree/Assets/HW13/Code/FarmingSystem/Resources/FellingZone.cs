@@ -123,7 +123,7 @@ namespace FarmingSystem {
             var tree = _trees[index];
 
             if (tree != null && tree.IsActive)
-                _trees[index].TakeDamage();
+                _trees[index].Extract();
         }
 
         [Button]
@@ -134,7 +134,7 @@ namespace FarmingSystem {
                 var tree = _trees[i];
 
                 if (tree != null && tree.IsActive)
-                    _trees[i].TakeDamage();
+                    _trees[i].Extract();
             }
         }
 

@@ -3,6 +3,7 @@ using UnityEditor;
 using UnityEngine;
 using FarmingSystem;
 using BehaviorTree.PlayerCoreSubsystem;
+using static Unity.VisualScripting.Member;
 
 namespace BehaviorTree.PlayerCompanents {
 
@@ -43,13 +44,6 @@ namespace BehaviorTree.PlayerCompanents {
 
             return true;
         }
-
-#if UNITY_EDITOR
-        private void OnDrawGizmosSelected() {
-            Handles.color = Color.yellow;
-            Handles.DrawWireDisc(Root.position, Vector3.up, DistanceToCollect);
-        }
-#endif
     }
 }
 

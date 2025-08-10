@@ -11,7 +11,7 @@ namespace BehaviorTree.Brain {
         [Space, SerializeField] private BoolReference _showDebugMessage;
 
         private int _index;
-        private int _direction;
+        private int _direction = 1;
 
         private BotBrainData _botBrainData => _data.Value;
         private IReadOnlyList<Transform> _waypoints => _data.Value.Waypoints;

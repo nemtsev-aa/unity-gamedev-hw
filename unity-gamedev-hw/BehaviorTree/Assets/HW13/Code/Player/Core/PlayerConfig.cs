@@ -13,5 +13,7 @@ namespace BehaviorTree.PlayerCoreSubsystem {
         [field: SerializeField] public float CollectionSpeed { get; private set; } = 0.3f;
         [field: SerializeField] public LayerMask ResourceMask { get; private set; }
         [field: SerializeField] public LayerMask LootMask { get; private set; }
+
+        [field: SerializeField] public float FellingDuration { get; private set; } = 1.2f;
     }
 }

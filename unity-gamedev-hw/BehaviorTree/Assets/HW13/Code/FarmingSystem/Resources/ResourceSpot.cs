@@ -5,7 +5,7 @@ using System.Collections.Generic;
 
 namespace FarmingSystem {
 
-    public sealed class ResourceSpot : MonoBehaviour {
+    public sealed class ResourceSpot : MonoBehaviour, IExtractive {
         public event Action<ResourceSpot, bool> CurrentStateChanged;
         public event Action<List<Loot>> LootSpawned;
 
@@ -33,7 +33,7 @@ namespace FarmingSystem {
             }
         }
 
-        public void TakeDamage() {
+        public void Extract() {
 
             IsActive = false;
             _view.gameObject.SetActive(IsActive);
