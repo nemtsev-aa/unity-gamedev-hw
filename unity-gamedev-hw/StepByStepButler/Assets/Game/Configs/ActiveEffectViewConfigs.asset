@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: da9135bc8e5a92b4f93c3e026673ad53, type: 3}
+  m_Name: ActiveEffectViewConfigs
+  m_EditorClassIdentifier: 
+  <Configs>k__BackingField:
+  - <Type>k__BackingField: 0
+    <Prefab>k__BackingField: {fileID: 6799062143079614730, guid: 0778ab9a079780843884d518f1564263, type: 3}
+  - <Type>k__BackingField: 1
+    <Prefab>k__BackingField: {fileID: 2031775117186324965, guid: 9f8fd47537d8c84419d628bcd123c403, type: 3}

@@ -1,0 +1,4097 @@
+// ===== ApplicationBootstrapper.cs =====
+using Zenject;
+using UnityEngine;
+using UI.Core;
+using UI.Components.Screens;
+
+namespace StepByStepButler.Core {
+
+    public sealed class ApplicationBootstrapper : MonoBehaviour {
+
+        private UIManager _uiManager;
+
+        [Inject]
+        public void Construct(UIManager uiManager) {
+            _uiManager = uiManager;
+        }
+
+        private async void Start() {
+            await _uiManager.ShowScreenAsync<MenuScreen>(UIScreenType.MenuScreen);
+        }
+    }
+}
+
+
+
+
+// ===== ApplicationExiter.cs =====
+using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
+namespace StepByStepButler.Core {
+
+    public sealed class ApplicationExiter {
+        public void ExitApp() {
+#if UNITY_EDITOR
+            EditorApplication.isPlaying = false;
+#else
+        Application.Quit(0);
+#endif
+        }
+    }
+}
+
+
+
+// ===== ProjectInstaller.cs =====
+using SceneManagementSystem;
+using UI.Services.Observers;
+using UnityEngine;
+using Zenject;
+
+namespace StepByStepButler.Core {
+
+    [CreateAssetMenu(
+        fileName = nameof(ProjectInstaller),
+        menuName = "Installers/New " + nameof(ProjectInstaller)
+    )]
+    public sealed class ProjectInstaller : ScriptableObjectInstaller {
+        [Space, SerializeField] private SceneReferencesProvider _sceneRefProvider;
+
+        public override void InstallBindings() {
+
+            Container.Bind<ApplicationExiter>()
+                .AsSingle()
+                .NonLazy();
+
+            Container.BindInstance(_sceneRefProvider)
+                .AsSingle()
+                .NonLazy();
+
+            Container
+                .Bind<ISceneLoader>()
+                .To<SceneLoader>()
+                .AsSingle()
+                .WithArguments(_sceneRefProvider)
+                .NonLazy();
+        }
+    }
+}
+
+
+
+// ===== EventBus.cs =====
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace EventBusService {
+
+    public sealed class EventBus : IEventBus {
+        private readonly Dictionary<Type, List<Action<IEvent>>> _subscribers = new();
+
+        public void Subscribe<T>(Action<T> handler) where T : IEvent {
+            Type eventType = typeof(T);
+            if (!_subscribers.ContainsKey(eventType))
+                _subscribers[eventType] = new List<Action<IEvent>>();
+
+            _subscribers[eventType].Add(@event => handler((T)@event));
+        }
+
+        public void Unsubscribe<T>(Action<T> handler) where T : IEvent {
+            Type eventType = typeof(T);
+            
+            if (_subscribers.ContainsKey(eventType) == true) 
+                _subscribers[eventType].RemoveAll(h => h.Target == handler.Target && h.Method == handler.Method);
+        }
+
+        public void Publish<T>(T @event) where T : IEvent {
+            Type eventType = typeof(T);
+            
+            if (_subscribers.ContainsKey(eventType) == true) {
+                
+                foreach (var handler in _subscribers[eventType].ToList()) // ToList для безопасной итерации
+                {
+                    handler(@event);
+                }
+            }
+        }
+
+        public void Dispose() {
+            _subscribers.Clear();
+        }
+    }
+}
+
+
+
+// ===== IEventBus.cs =====
+using System;
+
+namespace EventBusService {
+
+    public interface IEventBus : IDisposable {
+        void Subscribe<T>(Action<T> handler) where T : IEvent;
+        void Unsubscribe<T>(Action<T> handler) where T : IEvent;
+        void Publish<T>(T @event) where T : IEvent;
+    }
+}
+
+
+
+// ===== GameCycle.cs =====
+using Zenject;
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace GameCycleSystem {
+
+    public class GameCycle : ILateTickable, ITickable, IFixedTickable {
+        public event Action<GameStates> CurrentGameStateChanged;
+
+        private List<IGameListener> _gameListeners = new();
+        private List<IGameLateUpdateListener> _gameLateUpdateListeners = new();
+        private List<IGameUpdateListener> _gameUpdateListeners = new();
+        private List<IGameFixedUpdateListener> _gameFixedUpdateListeners = new();
+
+        public GameCycle() {
+            CurrentState = GameStates.InitializingComponents;
+        }
+
+        public GameStates CurrentState { get; private set; }
+
+        public void SetCurrentState(GameStates state) {
+            CurrentState = state;
+            CurrentGameStateChanged?.Invoke(CurrentState);
+        }
+
+        public void Add(IGameListener listener) {
+            if (_gameListeners.Contains(listener) == false)
+                _gameListeners.Add(listener);
+
+            if (listener is IGameLateUpdateListener gameLateUpdateListener) {
+                _gameLateUpdateListeners.Add(gameLateUpdateListener);
+                return;
+            }
+
+            if (listener is IGameUpdateListener gameUpdateListener) {
+                _gameUpdateListeners.Add(gameUpdateListener);
+                return;
+            }
+
+            if (listener is IGameFixedUpdateListener gameFixedUpdateListener) {
+                _gameFixedUpdateListeners.Add(gameFixedUpdateListener);
+                return;
+            }
+        }
+
+        public void InitializeGame() {
+            if (_gameListeners.Count == 0)
+                return;
+
+            if (CurrentState != GameStates.InitializingComponents)
+                return;
+
+            foreach (var iListener in _gameListeners) {
+
+                if (iListener is IGameInitializeListener gameStartListener)
+                    gameStartListener.OnInitializeGame();
+            }
+
+            SetCurrentState(GameStates.WaitingToStart);
+            Debug.Log($"<color=green> Game initialization completed </color>");
+        }
+
+        public void StartGame() {
+
+            if (_gameListeners.Count == 0)
+                return;
+
+            if (CurrentState != GameStates.WaitingToStart)
+                return;
+
+            foreach (var iListener in _gameListeners) {
+
+                if (iListener is IGameStartListener gameStartListener)
+                    gameStartListener.OnStartGame();
+            }
+
+            SetCurrentState(GameStates.Playing);
+            Debug.Log($"<color=green> Game started </color>");
+        }
+
+        public void PauseGame() {
+
+            if (_gameListeners.Count == 0)
+                return;
+
+            foreach (var iListener in _gameListeners) {
+
+                if (iListener is IGamePauseListener gamePauseListener)
+                    gamePauseListener.OnPauseGame();
+            }
+
+            if (CurrentState == GameStates.Playing) {
+                SetCurrentState(GameStates.Pause);
+                Debug.Log($"<color=green> Game paused </color>");
+
+                return;
+            }
+
+            if (CurrentState == GameStates.Pause) {
+                SetCurrentState(GameStates.Playing);
+                Debug.Log($"<color=green> Game playing </color>");
+            }
+        }
+
+        public void FinishGame() {
+
+            if (_gameListeners.Count == 0)
+                return;
+
+            foreach (var iListener in _gameListeners) {
+
+                if (iListener is IGameFinishListener gameFinishListener)
+                    gameFinishListener.OnFinishGame();
+            }
+
+            SetCurrentState(GameStates.WaitingToStart);
+            Debug.Log($"<color=green> Game finished </color>");
+        }
+
+        public void RestartGame() {
+
+            if (_gameListeners.Count == 0)
+                return;
+
+            foreach (var iListener in _gameListeners) {
+
+                if (iListener is IGameRestartListener gameRestartListener)
+                    gameRestartListener.OnRestartGame();
+            }
+
+            SetCurrentState(GameStates.WaitingToStart);
+            Debug.Log($"<color=green> Game restarted </color>");
+        }
+
+        public void LateTick() {
+            if (CurrentState == GameStates.InitializingComponents)
+                return;
+
+            if (_gameLateUpdateListeners.Count == 0)
+                return;
+
+            foreach (var iListener in _gameLateUpdateListeners) {
+                iListener.OnLateUpdateGame();
+            }
+        }
+
+        public void Tick() {
+            if (CurrentState == GameStates.InitializingComponents)
+                return;
+
+            if (_gameUpdateListeners.Count == 0)
+                return;
+
+            foreach (var iListener in _gameUpdateListeners) {
+                iListener.OnUpdateGame();
+            }
+        }
+
+        public void FixedTick() {
+            if (CurrentState == GameStates.InitializingComponents)
+                return;
+
+            if (_gameFixedUpdateListeners.Count == 0)
+                return;
+
+            foreach (var iListener in _gameFixedUpdateListeners) {
+                iListener.OnFixedUpdateGame();
+            }
+        }
+    }
+}
+
+
+
+
+
+
+
+// ===== GameCycleInstaller.cs =====
+using System;
+using Zenject;
+
+namespace GameCycleSystem {
+
+    [Serializable]
+    public sealed class GameCycleInstaller : MonoInstaller {
+
+        public override void InstallBindings() {
+
+            Container.BindInterfacesAndSelfTo<GameCycle>()
+                     .AsSingle();
+        }
+    }
+}
+
+
+
+
+
+
+
+// ===== GameStates.cs =====
+namespace GameCycleSystem {
+    
+    public enum GameStates {
+        InitializingComponents = 0,
+        WaitingToStart = 1,
+        Playing = 2,
+        Pause = 3
+    }
+}
+
+
+
+
+
+
+
+// ===== GameplayBootstrapper.cs =====
+using Cysharp.Threading.Tasks;
+using GameCycleSystem;
+using GameSystemServices;
+using System;
+using System.Threading.Tasks;
+using UnityEngine;
+using Zenject;
+
+namespace StepByStepButler.Core {
+
+    public sealed class GameplayBootstrapper : MonoBehaviour, IGameRestartListener {
+        private GameCycle _gameCycle;
+        private TurnSystem _turnSystem;
+
+        [Inject]
+        public void Construct(GameCycle gameCycle,
+                              TurnSystem turnSystem) {
+
+            _gameCycle = gameCycle;
+            _turnSystem = turnSystem;
+
+            _gameCycle.Add(this);
+        }
+
+        private void Start() {
+            StartGameplayAsync().Forget();
+        }
+
+        public void OnRestartGame() {
+            StartGameplayAsync().Forget();
+        }
+
+        private async UniTask StartGameplayAsync() {
+
+            if (TryFindSceneContext(out SceneContext sceneContext) == false)
+                throw new ArgumentNullException($"GameplayBootstrapper: SceneContext not found!");
+
+            await WaitForSceneContextInitialization(sceneContext);
+
+            _gameCycle.SetCurrentState(GameStates.InitializingComponents);
+            _gameCycle.InitializeGame();
+
+            _gameCycle.StartGame();
+            _turnSystem.StartNextTurn();
+        }
+
+        private bool TryFindSceneContext(out SceneContext sceneContext) {
+            var context = FindAnyObjectByType<SceneContext>();
+
+            if (context != null) {
+                sceneContext = context;
+                return true;
+            }
+
+            sceneContext = null;
+            return false;
+        }
+
+        private async Task WaitForSceneContextInitialization(SceneContext sceneContext) {
+
+            while (sceneContext.HasResolved == false) {
+                await Task.Yield();
+            }
+        }
+    }
+}
+
+
+
+// ===== GameplayInitializer.cs =====
+using GameCycleSystem;
+using GameSystemServices;
+using StepByStepButler.Core;
+using System.Collections.Generic;
+
+namespace BattleSystem {
+
+    public sealed class GameplayInitializer {
+        private readonly GameCycle _gameCycle;
+        private readonly List<IGameListener> _gameListeners;
+
+        public GameplayInitializer(GameCycle gameCycle,
+                                   HeroesProvider heroesProvider,
+                                   TurnSystem turnSystem,
+                                   AbilitySystem abilitySystem,
+                                   CombatSystem combatSystem,
+                                   DamageSystem damageSystem,
+                                   ViewSystem viewSystem,
+                                   AudioSystem audioSystem,
+                                   DeathAnimationSystem deathAnimationSystem,
+                                   GameplayMediator gameplayMediator) {
+
+            _gameCycle = gameCycle;
+
+            _gameListeners = new List<IGameListener>() {
+                heroesProvider,
+                turnSystem,
+                abilitySystem,
+                combatSystem,
+                damageSystem,
+                viewSystem,
+                audioSystem,
+                deathAnimationSystem,
+                gameplayMediator
+             };
+
+            AddGameListeners();
+        }
+
+        public void AddGameListeners() {
+
+            for (int i = 0; i < _gameListeners.Count; i++) {
+
+                var listener = _gameListeners[i];
+
+                if (listener != null)
+                    _gameCycle.Add(listener);
+            }
+        }
+    }
+}
+
+
+
+// ===== GameplayInstaller.cs =====
+using UI;
+using Zenject;
+using UnityEngine;
+using EventBusService;
+using GameSystemServices;
+using StepByStepButler.Core;
+
+namespace BattleSystem {
+
+    public sealed class GameplayInstaller : MonoInstaller {
+        [SerializeField] private HeroIconsConfiguration _heroIconsConfig;
+        [SerializeField] private HeroAudioConfiguration _heroAudioConfig;
+        [SerializeField] private UIService _uiService;
+        [SerializeField] private AudioPlayer _audioPlayer;
+        [SerializeField] private DeathAnimationSettings _deathAnimationSettings;
+
+        public override void InstallBindings() {
+            BindSettings();
+            BindEventBus();
+            BindEntityFactory();
+            BindSystems();
+            BindGameplay();
+        }
+
+        private void BindSettings() {
+            Container.BindInstance(_deathAnimationSettings);
+        }
+
+        private void BindEventBus() {
+
+            Container.Bind<IEventBus>()
+                .To<EventBus>()
+                .AsSingle();
+        }
+
+        private void BindEntityFactory() {
+
+            Container.Bind<EntityFactory>()
+                .AsSingle();
+
+        }
+
+        private void BindSystems() {
+
+            Container.BindInterfacesAndSelfTo<DeathAnimationSystem>()
+              .AsSingle()
+              .WithArguments(_deathAnimationSettings);
+
+            Container.BindInterfacesAndSelfTo<HeroesProvider>()
+                .AsSingle()
+                .NonLazy();
+
+            Container.BindInterfacesAndSelfTo<TurnSystem>()
+                .AsSingle()
+                .NonLazy();
+
+            Container.BindInterfacesAndSelfTo<AbilitySystem>()
+                .AsSingle()
+                .NonLazy();
+
+            Container.BindInterfacesAndSelfTo<CombatSystem>()
+                .AsSingle()
+                .NonLazy();
+
+            Container.BindInterfacesAndSelfTo<DamageSystem>()
+                .AsSingle();
+
+            Container.BindInterfacesAndSelfTo<ViewSystem>()
+               .AsSingle()
+               .WithArguments(_heroIconsConfig, _uiService);
+
+            Container.BindInterfacesAndSelfTo<AudioSystem>()
+                .AsSingle()
+                .WithArguments(_heroAudioConfig, _audioPlayer);
+        }
+
+        private void BindGameplay() {
+            Container.BindInterfacesAndSelfTo<GameplayMediator>()
+                .AsSingle()
+                .NonLazy();
+
+            Container.BindInterfacesAndSelfTo<GameplayInitializer>()
+                .AsSingle()
+                .NonLazy();
+        }
+    }
+}
+
+
+
+// ===== GameplayMediator.cs =====
+using BattleSystem;
+using Cysharp.Threading.Tasks;
+using EventBusService;
+using GameCycleSystem;
+using GameSystemServices;
+using System;
+using UI.Components.Screens;
+using UI.Core;
+using UnityEngine;
+using Zenject;
+
+namespace StepByStepButler.Core {
+
+    public sealed class GameplayMediator : IGameSystem {
+        private IEventBus _eventBus;
+        private UIManager _uiManager;
+
+        [Inject]
+        public void Construct(IEventBus eventBus,
+                              UIManager uiManager) {
+
+            _eventBus = eventBus;
+            _uiManager = uiManager;
+        }
+
+        public void OnInitializeGame() {
+            _eventBus.Subscribe<GameOverEvent>(OnGameOverEvent);
+        }
+
+        public void OnRestartGame() {
+            _eventBus.Unsubscribe<GameOverEvent>(OnGameOverEvent);
+            _eventBus.Dispose();
+        }
+
+        private void OnGameOverEvent(GameOverEvent @event) {
+            ShowGameoverScreen(@event.Winner).Forget();
+        }
+
+        private async UniTask ShowGameoverScreen(PlayerType winner) {
+            try {
+                var gameoverScreen = await _uiManager.ShowScreenAsync<GameoverScreen>(
+                    UIScreenType.GameoverScreen
+                );
+
+                gameoverScreen.UpdateWinnerLabel($"{winner}");
+                Debug.Log($"Game Over! Winner: {winner}");
+            }
+            catch (Exception e) {
+                Debug.LogError($"Failed to show gameover screen: {e.Message}");
+            }
+        }
+
+        public void OnFinishGame() {
+            _eventBus.Unsubscribe<GameOverEvent>(OnGameOverEvent);
+            _uiManager = null;
+        }
+    }
+}
+
+
+
+// ===== PlayerType.cs =====
+namespace BattleSystem {
+    
+    public enum PlayerType {
+        Red,
+        Blue
+    }
+}
+
+
+
+
+// ===== HeroListView.cs =====
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace UI
+{
+    [RequireComponent(typeof(Canvas))]
+    public sealed class HeroListView : MonoBehaviour
+    {
+        private const int FORWARD_LAYER = 10;
+        private const int BACK_LAYER = 0;
+
+        public event Action<HeroView> OnHeroClicked;
+
+        [SerializeField]
+        private HeroView[] views;
+
+        private Canvas canvas;
+
+        private void Awake()
+        {
+            this.canvas = this.GetComponent<Canvas>();
+        }
+
+        private void OnEnable()
+        {
+            foreach (var view in this.views)
+            {
+                view.OnClicked += () => this.OnHeroClicked?.Invoke(view);
+            }
+        }
+
+        private void OnDisable()
+        {
+            Action<HeroView> @event = this.OnHeroClicked;
+            if (@event == null)
+            {
+                return;
+            }
+
+            foreach (var @delegate in @event.GetInvocationList())
+            {
+                this.OnHeroClicked -= (Action<HeroView>) @delegate;
+            }
+        }
+
+        public IReadOnlyList<HeroView> GetViews()
+        {
+            return this.views;
+        }
+
+        public HeroView GetView(int index)
+        {
+            return this.views[index];
+        }
+
+        public void SetActive(bool isActive)
+        {
+            this.canvas.sortingOrder = isActive ? FORWARD_LAYER : BACK_LAYER;
+        }
+    }
+}
+
+
+
+// ===== HeroView.cs =====
+using System;
+using Cysharp.Threading.Tasks;
+using DG.Tweening;
+using TMPro;
+using UnityEngine;
+using UnityEngine.Events;
+using UnityEngine.UI;
+using static UnityEngine.GraphicsBuffer;
+
+namespace UI
+{
+    //Менять нельзя!
+    public sealed class HeroView : MonoBehaviour
+    {
+        internal event UnityAction OnClicked
+        {
+            add { this.button.onClick.AddListener(value); }
+            remove { this.button.onClick.RemoveListener(value); }
+        }
+
+        [SerializeField]
+        private Image heroImage;
+
+        [SerializeField]
+        private TMP_Text stats;
+
+        [SerializeField]
+        private Button button;
+
+        [Header("Active")]
+        [SerializeField, Space]
+        private Image activeImage;
+
+        [SerializeField]
+        private Sprite activeIcon;
+
+        [SerializeField]
+        private Sprite inactiveIcon;
+
+        [SerializeField]
+        private GameObject activeBlur;
+
+        [Header("Attack")]
+        [SerializeField]
+        private RectTransform center;
+
+        [SerializeField]
+        private float forwardDuration = 0.2f;
+
+        [SerializeField]
+        private AnimationCurve attackCurve;
+
+        [SerializeField]
+        private AnimationCurve scaleCurve;
+
+        [SerializeField]
+        private float backDuration = 0.5f;
+
+        [SerializeField]
+        private AudioClip punchSFX;
+
+        private Sequence attackAnimation;
+
+        private AudioPlayer audioPlayer;
+        
+        private void Start()
+        {
+            this.audioPlayer = AudioPlayer.Instance;
+        }
+
+        [Sirenix.OdinInspector.Button]
+        public void SetIcon(Sprite icon)
+        {
+            this.heroImage.sprite = icon;
+        }
+
+        [Sirenix.OdinInspector.Button]
+        public void SetStats(string stats)
+        {
+            this.stats.text = stats;
+        }
+
+        [Sirenix.OdinInspector.Button]
+        public void SetActive(bool isActive)
+        {
+            this.activeImage.sprite = isActive ? this.activeIcon : this.inactiveIcon;
+            this.activeBlur.SetActive(isActive);
+        }
+
+        [Sirenix.OdinInspector.Button]
+        public UniTask AnimateAttack(HeroView target)
+        {
+            if (this.attackAnimation != null)
+            {
+                return UniTask.CompletedTask;
+            }
+
+            UniTaskCompletionSource tcs = new UniTaskCompletionSource();
+            
+            Vector3 sourcePosition = this.center.position;
+            Vector3 targetPosition = target.center.position;
+
+            this.attackAnimation = DOTween
+                .Sequence()
+                .Append(this.center.DOMove(targetPosition, this.forwardDuration).SetEase(this.attackCurve))
+                .Join(this.center.DOScale(1.25f, this.forwardDuration).SetEase(this.scaleCurve))
+                .AppendCallback(() => this.audioPlayer.PlaySound(this.punchSFX))
+                .Append(this.center.DOMove(sourcePosition, this.backDuration))
+                .Join(this.center.DOScale(1, this.backDuration))
+                .OnComplete(() =>
+                {
+                    this.attackAnimation = null;
+                    tcs.TrySetResult();
+                });
+
+            return tcs.Task;
+        }
+    }
+}
+
+
+
+// ===== UIService.cs =====
+using UnityEngine;
+
+namespace UI {
+
+    public sealed class UIService : MonoBehaviour {
+        [SerializeField] private HeroListView _bluePlayer;
+        [SerializeField] private HeroListView _redPlayer;
+
+        public HeroListView GetBluePlayer() { 
+            return _bluePlayer;
+        }
+
+        public HeroListView GetRedPlayer() {
+            return _redPlayer;
+        }
+    }
+}
+
+
+
+// ===== ISceneLoader.cs =====
+namespace SceneManagementSystem {
+
+    public interface ISceneLoader {
+        public void LoadMenu();
+        public void LoadGame();
+    }
+}
+
+
+
+
+
+// ===== SceneLoader.cs =====
+using System;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using Cysharp.Threading.Tasks;
+
+namespace SceneManagementSystem {
+    public sealed class SceneLoader : ISceneLoader {
+
+        private SceneReferencesProvider _references;
+
+        public SceneLoader(SceneReferencesProvider references) {
+            _references = references;
+        }
+
+        public void LoadGame() => LoadSceneInternal(_references.GameSceneRef);
+        public void LoadMenu() => LoadSceneInternal(_references.MenuSceneRef);
+
+        private void LoadSceneInternal(string name) {
+            LoadScene(name).Forget();
+        }
+
+        private async UniTask LoadScene(string name) {
+            try {
+                await SceneManager.LoadSceneAsync(name, LoadSceneMode.Single);
+            }
+            catch (OperationCanceledException) {
+                Debug.LogWarning("Scene loading was cancelled");
+            }
+            catch (Exception e) {
+                Debug.LogError($"Failed to load scene: {e.Message}");
+            }
+        }
+    }
+}
+
+
+
+
+
+// ===== SceneReferencesProvider.cs =====
+using System;
+using UnityEngine;
+
+namespace SceneManagementSystem {
+
+    [Serializable]
+    public sealed class SceneReferencesProvider {
+        [field: SerializeField] public string MenuSceneRef { get; private set; }
+        [field: SerializeField] public string GameSceneRef { get; private set; }
+    }
+}
+
+
+
+
+// ===== AbilityUsedEvent.cs =====
+namespace EventBusService {
+
+    public struct AbilityUsedEvent : IEvent {
+        public int HeroId { get; }
+        public string AbilityName { get; }
+        public AbilityUsedEvent(int heroId, string abilityName) {
+            HeroId = heroId;
+            AbilityName = abilityName;
+        }
+    }
+}
+
+
+
+
+// ===== AttackAnimationCompleteEvent.cs =====
+namespace EventBusService {
+
+    public struct AttackAnimationCompleteEvent : IEvent {
+    
+    }
+}
+
+
+
+
+// ===== AttackCompleteEvent.cs =====
+namespace EventBusService {
+
+    public struct AttackCompleteEvent : IEvent {
+        public bool IsKill { get; }
+        public AttackCompleteEvent(bool kill) => IsKill = kill;
+    }
+}
+
+
+
+
+// ===== AttackEvent.cs =====
+namespace EventBusService {
+    
+    public struct AttackEvent : IEvent {
+        public int AttackerId { get; }
+        public int TargetId { get; }
+        
+        public AttackEvent(int attackerId, int targetId) {
+            AttackerId = attackerId;
+            TargetId = targetId;
+        }
+    }
+}
+
+
+
+
+// ===== DamageEvent.cs =====
+namespace EventBusService {
+    
+    public struct DamageEvent : IEvent {
+        public int TargetId { get; }
+        public int Damage { get; }
+        public int AttackerId { get; }
+
+        public DamageEvent(int targetId, int damage, int attackerId = -1) {
+            TargetId = targetId;
+            Damage = damage;
+            AttackerId = attackerId;
+        }
+    }
+}
+
+
+
+
+// ===== DeathAnimationCompleteEvent.cs =====
+namespace EventBusService {
+
+    public struct DeathAnimationCompleteEvent : IEvent {
+        public int HeroId { get; set; }
+
+        public DeathAnimationCompleteEvent(int heroId) {
+            HeroId = heroId;
+        }
+    }
+}
+
+
+
+
+// ===== FreezeEvent.cs =====
+namespace EventBusService {
+    public struct FreezeEvent : IEvent {
+        public int TargetId { get; }
+        public FreezeEvent(int targetId) => TargetId = targetId;
+    }
+}
+
+
+
+
+// ===== GameOverEvent.cs =====
+using BattleSystem;
+
+namespace EventBusService {
+    public struct GameOverEvent : IEvent {
+        public PlayerType Winner { get; }
+        public GameOverEvent(PlayerType winner) => Winner = winner;
+    }
+}
+
+
+
+
+// ===== HealEvent.cs =====
+namespace EventBusService {
+
+    public struct HealEvent : IEvent {
+        public int TargetId { get; }
+        public int Amount { get; }
+        public HealEvent(int targetId, int amount) {
+            TargetId = targetId;
+            Amount = amount;
+        }
+    }
+}
+
+
+
+
+// ===== HealthChangedEvent.cs =====
+namespace EventBusService {
+    
+    public struct HealthChangedEvent : IEvent {
+        public int HeroId { get; }
+        public int NewHealth { get; }
+        public int MaxHealth { get; }
+
+        public HealthChangedEvent(int heroId, int newHealth, int maxHealth) {
+            HeroId = heroId;
+            NewHealth = newHealth;
+            MaxHealth = maxHealth;
+        }
+    }
+}
+
+
+
+
+// ===== HeroDeathAnimationEvent.cs =====
+using UI;
+using BattleSystem;
+
+namespace EventBusService {
+
+    public struct HeroDeathAnimationEvent : IEvent {
+        public int HeroId { get; }
+        public HeroView HeroView { get; }
+        public HeroType HeroType { get; }
+
+        public HeroDeathAnimationEvent(int heroId, HeroView heroView, HeroType heroType) {
+            HeroId = heroId;
+            HeroView = heroView;
+            HeroType = heroType;
+        }
+    }
+}
+
+
+
+
+// ===== HeroDeathEvent.cs =====
+namespace EventBusService {
+
+    public struct HeroDeathEvent : IEvent {
+        public int HeroId { get; }
+        
+        public HeroDeathEvent(int heroId) {
+            HeroId = heroId;
+        }
+    }
+}
+
+
+
+
+// ===== IEvent.cs =====
+namespace EventBusService {
+
+    public interface IEvent {
+
+    }
+}
+
+
+
+
+// ===== ReadyForNextTurnEvent.cs =====
+namespace EventBusService {
+    public struct ReadyForNextTurnEvent : IEvent {
+    
+    }
+}
+
+
+
+
+// ===== TurnStartedEvent.cs =====
+namespace EventBusService {
+    
+    public struct TurnStartedEvent : IEvent {
+        public int HeroId { get; }
+        
+        public TurnStartedEvent(int heroId) { 
+            HeroId = heroId; 
+        }
+    }
+}
+
+
+
+
+// ===== IGameFinishListener.cs =====
+namespace GameCycleSystem {
+
+    public interface IGameFinishListener : IGameListener {
+        void OnFinishGame();
+    }
+}
+
+
+
+
+
+
+// ===== IGameFixedUpdateListener.cs =====
+namespace GameCycleSystem {
+
+    public interface IGameFixedUpdateListener : IGameListener {
+        void OnFixedUpdateGame();
+    }
+}
+
+
+
+
+
+// ===== IGameInitializeListener.cs =====
+namespace GameCycleSystem {
+    public interface IGameInitializeListener : IGameListener {
+        void OnInitializeGame();
+    }
+}
+
+
+
+
+
+
+// ===== IGameLateUpdateListener.cs =====
+namespace GameCycleSystem {
+
+    public interface IGameLateUpdateListener : IGameListener {
+        void OnLateUpdateGame();
+    }
+}
+
+
+
+
+
+// ===== IGameListener.cs =====
+namespace GameCycleSystem {
+
+    public interface IGameListener {
+
+    }
+}
+
+
+
+
+// ===== IGamePauseListener.cs =====
+namespace GameCycleSystem {
+
+    public interface IGamePauseListener : IGameListener {
+        void OnPauseGame();
+    }
+}
+
+
+
+
+
+// ===== IGameRestartListener.cs =====
+namespace GameCycleSystem {
+    public interface IGameRestartListener : IGameListener {
+        void OnRestartGame();
+    }
+}
+
+
+
+
+// ===== IGameStartListener.cs =====
+namespace GameCycleSystem {
+
+    public interface IGameStartListener : IGameListener {
+        void OnStartGame();
+    }
+}
+
+
+
+
+// ===== IGameUpdateListener.cs =====
+namespace GameCycleSystem {
+
+    public interface IGameUpdateListener : IGameListener {
+        void OnUpdateGame();
+    }
+}
+
+
+
+
+
+// ===== GameCycleView.cs =====
+using System;
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using R3;
+
+namespace GameCycleSystem {
+
+    public sealed class GameCycleView : MonoBehaviour, IDisposable {
+        public Observable<Unit> LoginButtonClick => _loginButton.OnClickAsObservable();
+        public Observable<Unit> LogoutButtonClick => _logoutButton.OnClickAsObservable();
+        public Observable<Unit> PauseButtonClick => _pauseButton.OnClickAsObservable();
+
+        [SerializeField] private TMP_Text _currentStateText;
+        [SerializeField] private Button _loginButton;
+        [SerializeField] private Button _logoutButton;
+        [SerializeField] private Button _pauseButton;
+
+        private IGameCycleViewModel _viewModel;
+        private GameCycle _gameCycle;
+        private CompositeDisposable _disposables = new();
+
+        public void Init(IGameCycleViewModel viewModel) {
+            _viewModel = viewModel;
+            _gameCycle = _viewModel.GameCycle;
+
+            CreateReactiveSubscribes();
+        }
+
+        public void Show(bool status) {
+            gameObject.SetActive(status);
+
+            if (status == true)
+                ShowCurrentGameState();
+        }
+
+        private void CreateReactiveSubscribes() {
+
+            LoginButtonClick
+                .Subscribe(OnLoginButtonClick)
+                .AddTo(_disposables);
+
+            LogoutButtonClick
+                .Subscribe(OnLogoutButtonClick)
+                .AddTo(_disposables);
+
+            PauseButtonClick
+                .Subscribe(OnPauseButtonClick)
+                .AddTo(_disposables);
+        }
+
+        private void OnLoginButtonClick(Unit unit) {
+            _gameCycle.StartGame();
+            ShowCurrentGameState();
+        }
+
+        private void OnLogoutButtonClick(Unit unit) {
+            _gameCycle.FinishGame();
+            ShowCurrentGameState();
+        }
+
+        private void OnPauseButtonClick(Unit unit) {
+            _gameCycle.PauseGame();
+            ShowCurrentGameState();
+        }
+
+        private void ShowCurrentGameState() {
+            var currentState = _gameCycle.CurrentState;
+
+            if (currentState == GameStates.WaitingToStart) {
+                _currentStateText.text = $"Game State: Waiting To Start";
+                return;
+            }
+
+            _currentStateText.text = $"Game State: {currentState}";
+        }
+
+        public void Dispose() {
+
+            if (_disposables.IsDisposed == false)
+                _disposables.Dispose();
+        }
+    }
+}
+
+
+
+
+
+
+
+// ===== GameCycleViewModel.cs =====
+namespace GameCycleSystem {
+    public sealed class GameCycleViewModel : IGameCycleViewModel {
+        public GameCycle GameCycle { get; }
+
+        public GameCycleViewModel(GameCycle gameCycle) {
+            GameCycle = gameCycle;
+        }
+    }
+}
+
+
+
+
+
+
+
+// ===== GameCycle_UI.cs =====
+using System;
+
+namespace GameCycleSystem {
+
+    [Serializable]
+    public sealed class GameCycle_UI {
+        private readonly GameCycleView _gameCycleView;
+
+        public GameCycle_UI(GameCycleView gameCycleView) {
+            _gameCycleView = gameCycleView;
+        }
+
+        public void ShowGameCycleView() {
+            var status = !_gameCycleView.gameObject.activeSelf;
+            _gameCycleView.Show(status);
+        }
+    }
+}
+
+
+
+
+
+
+
+// ===== IGameCycleViewModel.cs =====
+namespace GameCycleSystem {
+    public interface IGameCycleViewModel {
+        GameCycle GameCycle { get; }
+    }
+}
+
+
+
+
+
+
+
+// ===== HeroesProvider.cs =====
+using BattleSystem;
+using GameSystemServices;
+using System.Collections.Generic;
+
+namespace BattleSystem {
+
+    public sealed class HeroesProvider : IGameSystem {
+        public IReadOnlyList<Entity> GetEntities() => _entities;
+        
+        private readonly EntityFactory _entityFactory;
+        private readonly List<Entity> _entities = new();
+
+        public HeroesProvider(EntityFactory entityFactory) {
+            _entityFactory = entityFactory;
+        }
+
+        public void OnInitializeGame() {
+            // Red team heroes
+            CreateHero(HeroType.Devourer, PlayerType.Red, 0);
+            CreateHero(HeroType.Huntress, PlayerType.Red, 1);
+            CreateHero(HeroType.StupidOrc, PlayerType.Red, 2);
+            CreateHero(HeroType.LordVamp, PlayerType.Red, 3);
+
+            // Blue team heroes
+            CreateHero(HeroType.Paladin, PlayerType.Blue, 0);
+            CreateHero(HeroType.IceMage, PlayerType.Blue, 1);
+            CreateHero(HeroType.Meditator, PlayerType.Blue, 2);
+            CreateHero(HeroType.Electro, PlayerType.Blue, 3);
+        }
+
+        public void OnFinishGame() {
+
+            for (int i = 0; i < _entities.Count; i++) {
+
+                if (_entities[i] != null)
+                    _entities[i].Dispose();
+            }
+
+            _entities.Clear();
+        }
+
+        public void OnRestartGame() {
+            for (int i = 0; i < _entities.Count; i++) {
+
+                if (_entities[i] != null)
+                    _entities[i].Dispose();
+            }
+
+            _entities.Clear();
+
+            _entityFactory.ResetIdCounter();
+        }
+
+        public bool TryGetEntityById(int id, out Entity entity) {
+
+            for (int i = 0; i < _entities.Count; i++) {
+                Entity iEntity = _entities[i];
+
+                if (iEntity.Id == id) {
+                    entity = iEntity;
+                    return true;
+                }
+            }
+
+            entity = default;
+            return false;
+        }
+
+        private void CreateHero(HeroType heroType, PlayerType playerType, int viewIndex) {
+            var entity = _entityFactory.CreateHero(heroType, playerType, viewIndex);
+            _entities.Add(entity);
+        }
+    }
+}
+
+
+
+// ===== HeroStats.cs =====
+using System;
+
+namespace BattleSystem {
+
+    [Serializable]
+    public sealed class HeroStats {
+        public int Health;
+        public int AttackPower; 
+
+        public HeroStats(int health, int attackPower) {
+            Health = health;
+            AttackPower = attackPower;
+        }
+    }
+}
+
+
+
+// ===== HeroType.cs =====
+namespace BattleSystem {
+    public enum HeroType {
+        Devourer,
+        Huntress,
+        StupidOrc,
+        LordVamp,
+        Paladin,
+        IceMage,
+        Meditator,
+        Electro
+    }
+}
+
+
+
+// ===== AbilitySystem.cs =====
+using BattleSystem;
+using EventBusService;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace GameSystemServices {
+    public class AbilitySystem : IGameSystem {
+        private readonly IEventBus _eventBus;
+        private readonly HeroesProvider _heroes;
+
+        private IReadOnlyList<Entity> Entities => _heroes.GetEntities();
+
+        public AbilitySystem(IEventBus eventBus, HeroesProvider heroes) {
+            _eventBus = eventBus;
+            _heroes = heroes;
+        }
+
+        public void OnInitializeGame() {
+            _eventBus.Subscribe<TurnStartedEvent>(OnTurnStarted);
+        }
+
+        public void OnFinishGame() {
+            _eventBus.Unsubscribe<TurnStartedEvent>(OnTurnStarted);
+        }
+
+        public void OnRestartGame() { }
+
+        private void OnTurnStarted(TurnStartedEvent evt) {
+
+            if (_heroes.TryGetEntityById(evt.HeroId, out var hero) == false)
+                return;
+
+            switch (hero.GetHeroType()) {
+                case HeroType.Devourer:
+                    ExecuteDevourerAbility(hero);
+                    break;
+
+                case HeroType.Meditator:
+                    ExecuteMeditatorAbility(hero);
+                    break;
+            }
+        }
+
+        private void ExecuteDevourerAbility(Entity hero) {
+            var enemies = Entities
+                            .Where(e => e.GetTeam() != hero.GetTeam() && e.IsAlive() == true)
+                            .ToList();
+
+            if (enemies.Count() > 0) {
+                var target = enemies[UnityEngine.Random.Range(0, enemies.Count())];
+                _eventBus.Publish(new DamageEvent(target.Id, 3, hero.Id));
+            }
+        }
+
+        private void ExecuteMeditatorAbility(Entity hero) {
+            var allies = Entities
+                            .Where(e => (e.GetTeam() == hero.GetTeam()) && e.IsAlive() == true)
+                            .ToList();
+
+            if (allies.Count() > 0) {
+                var target = allies[UnityEngine.Random.Range(0, allies.Count())];
+                _eventBus.Publish(new HealEvent(target.Id, 1));
+            }
+        }
+    }
+}
+
+
+
+// ===== CombatSystem.cs =====
+using BattleSystem;
+using EventBusService;
+using System.Collections.Generic;
+using System.Linq;
+using Random = UnityEngine.Random;
+
+namespace GameSystemServices {
+
+    public sealed class CombatSystem : IGameSystem {
+        private readonly IEventBus _eventBus;
+        private readonly HeroesProvider _heroesSystem;
+        private PlayerType _losingTeam;
+
+        private IReadOnlyList<Entity> Entities => _heroesSystem.GetEntities();
+
+        public CombatSystem(IEventBus eventBus, HeroesProvider heroSystem) {
+            _eventBus = eventBus;
+            _heroesSystem = heroSystem;
+        }
+
+        public void OnInitializeGame() {
+            _eventBus.Subscribe<AttackEvent>(OnAttack);
+            //_eventBus.Subscribe<HeroDeathEvent>(OnDeath);
+            _eventBus.Subscribe<DeathAnimationCompleteEvent>(OnDeathAnimationComplete);
+        }
+
+        public void OnFinishGame() {
+            _eventBus.Unsubscribe<AttackEvent>(OnAttack);
+            //_eventBus.Unsubscribe<HeroDeathEvent>(OnDeath);
+            _eventBus.Unsubscribe<DeathAnimationCompleteEvent>(OnDeathAnimationComplete);
+        }
+
+        public void OnRestartGame() { }
+
+        private void OnAttack(AttackEvent evt) {
+
+            if (_heroesSystem.TryGetEntityById(evt.AttackerId, out var attacker) == false) 
+                return;
+
+            if (_heroesSystem.TryGetEntityById(evt.TargetId, out var target) == false)
+                return;
+
+            if (IsValidAttack(attacker, target) == false)
+                return;
+
+            var finalTarget = HandleStupidOrcAbility(attacker, target);
+            var damage = attacker.GetAttackPower();
+
+            _eventBus.Publish(new DamageEvent(finalTarget.Id, damage, attacker.Id));
+
+            HandleCounterAttack(attacker, finalTarget);
+            HandleLordVampAbility(attacker, damage);
+            HandleIceMageAbility(attacker, finalTarget);
+        }
+
+        private bool IsValidAttack(Entity attacker, Entity target) {
+            return attacker != null && target != null &&
+                   attacker.IsAlive() == true && target.IsAlive() == true &&
+                   attacker.GetTeam() != target.GetTeam();
+        }
+
+        private Entity HandleStupidOrcAbility(Entity attacker, Entity originalTarget) {
+            
+            if (attacker.GetHeroType() == HeroType.StupidOrc && Random.value < 0.5f) {
+                var otherEnemies = Entities
+                    .Where(e => (e.GetTeam() != attacker.GetTeam()) && e.Id != originalTarget.Id && e.IsAlive() == true)
+                    .ToList();
+
+                return otherEnemies.Count() > 0 ?
+                    otherEnemies[Random.Range(0, otherEnemies.Count())] :
+                    originalTarget;
+            }
+            return originalTarget;
+        }
+
+        private void HandleCounterAttack(Entity attacker, Entity target) {
+
+            if (attacker.GetHeroType() != HeroType.Huntress && target.IsAlive() == true)
+                _eventBus.Publish(new DamageEvent(attacker.Id, target.GetAttackPower(), target.Id));
+        }
+
+        private void HandleLordVampAbility(Entity attacker, int damage) {
+
+            if (attacker.GetHeroType() == HeroType.LordVamp && Random.value < 0.5f)
+                _eventBus.Publish(new HealEvent(attacker.Id, damage));
+        }
+
+        private void HandleIceMageAbility(Entity attacker, Entity target) {
+
+            if (attacker.GetHeroType() == HeroType.IceMage)
+                _eventBus.Publish(new FreezeEvent(target.Id));
+        }
+
+        private void OnDeathAnimationComplete(DeathAnimationCompleteEvent @event) {
+
+            if (_heroesSystem.TryGetEntityById(@event.HeroId, out var deadHero) == false)
+                return;
+
+            var team = deadHero.GetTeam();
+            var aliveTeamMembers = Entities.Count(e => e.GetTeam() == team && e.IsAlive() == true);
+
+            if (aliveTeamMembers == 0) {
+                _losingTeam = team == PlayerType.Red ? PlayerType.Blue : PlayerType.Red;
+                _eventBus.Publish(new GameOverEvent(_losingTeam));
+            }
+        }
+    }
+}
+
+
+
+// ===== DamageSystem.cs =====
+using BattleSystem;
+using EventBusService;
+using System.Collections.Generic;
+using System.Threading;
+using UnityEngine;
+
+namespace GameSystemServices {
+
+    public sealed class DamageSystem : IGameSystem {
+        private readonly IEventBus _eventBus;
+        private readonly HeroesProvider _heroes;
+
+        private IReadOnlyList<Entity> Entities => _heroes.GetEntities();
+
+        public DamageSystem(IEventBus eventBus,
+                            HeroesProvider heroes) {
+
+            _eventBus = eventBus;
+            _heroes = heroes;
+        }
+
+        public void OnInitializeGame() {
+            _eventBus.Subscribe<DamageEvent>(OnDamageEvent);
+            _eventBus.Subscribe<HealEvent>(OnHealEvent);
+            _eventBus.Subscribe<FreezeEvent>(OnFreezeEvent);
+        }
+
+        public void OnFinishGame() {
+            _eventBus.Unsubscribe<DamageEvent>(OnDamageEvent);
+            _eventBus.Unsubscribe<HealEvent>(OnHealEvent);
+            _eventBus.Unsubscribe<FreezeEvent>(OnFreezeEvent);
+        }
+
+        public void OnRestartGame() { }
+
+        private void OnDamageEvent(DamageEvent evt) {
+
+            if (_heroes.TryGetEntityById(evt.TargetId, out var target) == false)
+                return;
+
+            var health = target.GetComponent<HealthComponent>();
+            int damage = evt.Damage;
+
+            // Divine Shield check
+            if (target.HasComponent<DivineShieldComponent>()) {
+                var shieldComp = target.GetComponent<DivineShieldComponent>();
+
+                if (shieldComp.IsActive == true) {
+                    shieldComp.IsActive = false;
+                    target.UpdateComponent(shieldComp);
+
+                    damage = 0; // No damage taken
+                }
+            }
+
+            // Apply damage
+            if (damage > 0) {
+                health.CurrentHealth = Mathf.Max(0, health.CurrentHealth - damage);
+                target.UpdateComponent(health);
+
+                _eventBus.Publish(new HealthChangedEvent(target.Id, health.CurrentHealth, health.MaxHealth));
+
+                // Electro ability - deal 1 damage to all when taking damage
+                var targetType = target.GetComponent<HeroTypeComponent>().Type;
+
+                if (targetType == HeroType.Electro && damage > 0) {
+                    _eventBus.Publish(new AbilityUsedEvent(target.Id, "Electric Shock"));
+
+                    foreach (var entity in Entities) {
+
+                        if (entity.Id != target.Id && entity.GetComponent<HealthComponent>().CurrentHealth > 0)
+                            _eventBus.Publish(new DamageEvent(entity.Id, 1));
+                    }
+                }
+            }
+        }
+
+        private void OnHealEvent(HealEvent evt) {
+
+            if (_heroes.TryGetEntityById(evt.TargetId, out var target) == false)
+                return;
+
+            var healthComp = target.GetComponent<HealthComponent>();
+            healthComp.CurrentHealth = Mathf.Min(healthComp.MaxHealth, healthComp.CurrentHealth + evt.Amount);
+            target.UpdateComponent(healthComp);
+
+            _eventBus.Publish(new HealthChangedEvent(target.Id, healthComp.CurrentHealth, healthComp.MaxHealth));
+        }
+
+        private void OnFreezeEvent(FreezeEvent evt) {
+
+            if (_heroes.TryGetEntityById(evt.TargetId, out var target) == false)
+                return;
+
+            target.AddComponent(new FrozenComponent(1));
+        }
+    }
+}
+
+
+
+// ===== DeathAnimationSystem.cs =====
+using Cysharp.Threading.Tasks;
+using DG.Tweening;
+using EventBusService;
+using GameSystemServices;
+using System.Collections.Generic;
+using System.Threading;
+using UI;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace BattleSystem {
+
+    public sealed class DeathAnimationSystem : IGameSystem {
+        private readonly DeathAnimationSettings _settings;
+        private readonly Dictionary<HeroType, GameObject> EffectsDictionary;
+
+        private readonly IEventBus _eventBus;
+        private Vector3 _originalScale;
+        private Color _originalColor;
+        private Image _iconImage;
+
+        public DeathAnimationSystem(IEventBus eventBus,
+                                    DeathAnimationSettings settings) {
+
+            _eventBus = eventBus;
+            _settings = settings;
+
+            EffectsDictionary = _settings.GetEffectsDictionary();
+        }
+
+        public void OnInitializeGame() {
+            _eventBus.Subscribe<HeroDeathAnimationEvent>(PlayDeathAnimation);
+        }
+
+        public void OnFinishGame() {
+            _eventBus.Unsubscribe<HeroDeathAnimationEvent>(PlayDeathAnimation);
+        }
+
+        public void OnRestartGame() { }
+
+        public async void PlayDeathAnimation(HeroDeathAnimationEvent @event) {
+            try {
+                _eventBus.Publish(new HeroDeathEvent(@event.HeroId));
+                await AnimateDeath(@event.HeroView, @event.HeroType);
+            }
+            finally {
+                _eventBus.Publish(new DeathAnimationCompleteEvent { HeroId = @event.HeroId });
+            }
+        }
+
+        private async UniTask AnimateDeath(HeroView heroView, HeroType heroType) {
+            var cts = new CancellationTokenSource();
+            var linkedToken = CancellationTokenSource.CreateLinkedTokenSource(
+                cts.Token,
+                heroView.GetCancellationTokenOnDestroy()).Token;
+
+            GetOriginalParameters(heroView);
+
+            var cancellationToken = heroView.GetCancellationTokenOnDestroy();
+            var shakeTween = heroView.transform
+                .DOShakePosition(
+                    duration: _settings.ShakeDuration,
+                    strength: _settings.ShakeStrength,
+                    vibrato: _settings.ShakeVibrato,
+                    randomness: 90f,
+                    snapping: false,
+                    fadeOut: true)
+                .AsyncWaitForCompletion()
+                .AsUniTask();
+
+            _iconImage.sprite = _settings.DeathIcon;
+            var fadeTween = _iconImage.DOFade(0.2f, _settings.FadeDuration)
+                                      .SetEase(Ease.InQuad)
+                                      .AsyncWaitForCompletion()
+                                      .AsUniTask();
+
+            var scaleTween = heroView.transform
+                                     .DOScale(
+                                        heroView.transform.localScale * _settings.ScaleDownMultiplier,
+                                        _settings.FadeDuration)
+                                     .SetEase(Ease.InBack)
+                                     .AsyncWaitForCompletion()
+                                     .AsUniTask();
+
+            var effectTask = PlayDeathEffect(heroView, heroType, linkedToken);
+
+            await UniTask.WaitForSeconds(_settings.FadeDuration);
+
+            await UniTask.WhenAll(
+                shakeTween,
+                fadeTween,
+                scaleTween,
+                effectTask
+            );
+
+            heroView.gameObject.SetActive(false);
+            ResetAppearance(heroView);
+        }
+
+        private void GetOriginalParameters(HeroView view) {
+            _originalScale = view.transform.localScale;
+
+            if (TryGetIconImage(view, out var iconImage) == false)
+                return;
+
+            _iconImage = iconImage;
+            _originalColor = iconImage.color;
+        }
+
+        public void ResetAppearance(HeroView view) {
+            view.transform.localScale = _originalScale;
+
+            if (_iconImage != null)
+                _iconImage.color = _originalColor;
+        }
+
+        private bool TryGetIconImage(HeroView view, out Image iconImage) {
+
+            var parent = view.GetComponent<RectTransform>();
+            var iconImageTransform = FindDeepChild(parent, "Icon");
+
+            if (iconImageTransform != null) {
+
+                if (iconImageTransform.TryGetComponent(out Image icon) == true) {
+                    iconImage = icon;
+                    return true;
+                }
+            }
+
+            iconImage = null;
+            return false;
+        }
+
+        private RectTransform FindDeepChild(RectTransform parent, string name) {
+            foreach (RectTransform child in parent) {
+                
+                if (child.name == name)
+                    return child;
+            }
+
+            foreach (RectTransform child in parent) {
+                var result = FindDeepChild(child, name);
+                
+                if (result != null)
+                    return result;
+            }
+
+            return null;
+        }
+
+        private async UniTask PlayDeathEffect(HeroView heroView,
+                                              HeroType heroType,
+                                              CancellationToken cancellationToken) {
+
+            if (EffectsDictionary.TryGetValue(heroType, out var effectPrefab)) {
+                var effect = GameObject.Instantiate(effectPrefab,
+                    heroView.transform.position,
+                    Quaternion.identity);
+
+                try {
+                    var ps = effect.GetComponent<ParticleSystem>();
+
+                    if (ps != null) {
+                        await ps.WaitForCompletionAsync(cancellationToken);
+                    } else {
+                        await UniTask.Delay(2000, cancellationToken: cancellationToken);
+                    }
+                }
+                finally {
+
+                    if (effect != null)
+                        GameObject.Destroy(effect);
+                }
+            }
+        }
+    }
+}
+
+
+
+// ===== IGameSystem.cs =====
+using GameCycleSystem;
+
+namespace GameSystemServices {
+
+    public interface IGameSystem : IGameInitializeListener,
+                                   IGameFinishListener,
+                                   IGameRestartListener {
+
+    }
+}
+
+
+
+// ===== ParticleSystemExtensions.cs =====
+using Cysharp.Threading.Tasks;
+using System.Threading;
+using UnityEngine;
+
+namespace BattleSystem {
+    public static class ParticleSystemExtensions {
+
+        public static async UniTask WaitForCompletionAsync(this ParticleSystem particleSystem,
+                                                           CancellationToken cancellationToken = default) {
+            
+            if (particleSystem == null || particleSystem.gameObject.activeInHierarchy == false)
+                return;
+
+            if (particleSystem.isPlaying == false)
+                particleSystem.Play();
+
+            while (cancellationToken.IsCancellationRequested == false &&
+                  (particleSystem.IsAlive(withChildren: true) || particleSystem.isPlaying == true)) {
+
+                await UniTask.Yield(PlayerLoopTiming.Update, cancellationToken);
+            }
+        }
+    }
+}
+
+
+
+// ===== TurnSystem.cs =====
+using BattleSystem;
+using EventBusService;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace GameSystemServices {
+
+    public sealed class TurnSystem : IGameSystem {
+        private readonly IEventBus _eventBus;
+        private readonly HeroesProvider _heroes;
+        private readonly Queue<int> _turnOrder = new();
+        private int _currentTurnHero = -1;
+
+        private IReadOnlyList<Entity> Entities => _heroes.GetEntities();
+
+        public TurnSystem(IEventBus eventBus, HeroesProvider heroes) {
+            _eventBus = eventBus;
+            _heroes = heroes;
+        }
+
+        public void OnInitializeGame() {
+            SetupTurnOrder();
+
+            _eventBus.Subscribe<ReadyForNextTurnEvent>(OnReadyForNextTurn);
+        }
+
+        public void OnFinishGame() {
+             _turnOrder.Clear();
+            _currentTurnHero = -1;
+
+            _eventBus.Unsubscribe<ReadyForNextTurnEvent>(OnReadyForNextTurn);
+        }
+
+        public void OnRestartGame() {
+            _turnOrder.Clear();
+            _currentTurnHero = -1;
+        }
+
+        public void StartNextTurn() {
+
+            if (_turnOrder.Count == 0)
+                return;
+
+            _currentTurnHero = _turnOrder.Dequeue();
+            var hero = GetCurrentHero();
+
+            if (hero == null || hero.IsAlive() == false) {
+                StartNextTurn();
+                return;
+            }
+
+            if (hero.IsFrozen() == true) {
+                hero.ReduceFreezeTurns();
+                
+                _turnOrder.Enqueue(_currentTurnHero);
+                
+                StartNextTurn();
+                return;
+            }
+
+            _turnOrder.Enqueue(_currentTurnHero);
+            _eventBus.Publish(new TurnStartedEvent(_currentTurnHero));
+        }
+
+        public Entity GetCurrentHero() {
+
+            if (_heroes.TryGetEntityById(_currentTurnHero, out var entity) == false)
+                return null;
+
+            return entity;
+        }
+
+        private void SetupTurnOrder() {
+            var redTeam = Entities
+                .Where(h => h.IsRedTeam()).ToList();
+            
+            var blueTeam = Entities
+                .Where(h => h.IsBlueTeam()).ToList();
+
+            for (int i = 0; i < Math.Max(redTeam.Count, blueTeam.Count); i++) {
+
+                if (i < redTeam.Count)
+                    _turnOrder.Enqueue(redTeam[i].Id);
+
+                if (i < blueTeam.Count)
+                    _turnOrder.Enqueue(blueTeam[i].Id);
+            }
+        }
+
+        private void OnReadyForNextTurn(ReadyForNextTurnEvent _) {
+            StartNextTurn();
+        }
+    }
+}
+
+
+
+// ===== ScreenFactory.cs =====
+using UnityEngine;
+using UI.Components;
+using UI.Components.Screens;
+using System.Collections.Generic;
+using Object = UnityEngine.Object;
+using static UnityEngine.Rendering.STP;
+using Unity.VisualScripting.FullSerializer;
+
+namespace UI.Services {
+
+    public sealed class ScreenFactory {
+        private readonly UIScreenConfigs _screenConfigs;
+        private readonly Dictionary<UIScreenType, Queue<UIComponent>> _screenPool = new();
+
+        public ScreenFactory(UIScreenConfigs screenConfigs) {
+            _screenConfigs = screenConfigs;
+        }
+
+        public T CreateScreen<T>(UIScreenType screenType, Transform parent) where T : UIComponent {
+
+            if (TryGetFromPool(screenType, out var screen) == true)
+                return (T)screen;
+
+            if (TryGetScreenPrefabByType(screenType, out var prefab) == false)
+                return null;
+
+            var instance = Object.Instantiate(prefab, parent);
+            var component = instance.GetComponent<T>();
+
+            if (component == null) {
+                Debug.LogError($"Component {typeof(T)} not found on {screenType} prefab");
+                Object.Destroy(instance);
+                return null;
+            }
+
+            component.Initialize();
+
+            return component;
+        }
+
+        private bool TryGetFromPool(UIScreenType screenType, out UIComponent screen) {
+
+            if (_screenPool.TryGetValue(screenType, out var pool) && pool.Count > 0) {
+                screen = pool.Dequeue();
+                return true;
+            }
+
+            screen = null;
+            return false;
+        }
+
+        private bool TryGetScreenPrefabByType(UIScreenType type, out GameObject prefab) {
+
+            for (int i = 0; i < _screenConfigs.Configs.Length; i++) {
+                var iConfig = _screenConfigs.Configs[i];
+
+                if (iConfig.ScreenType == type) {
+                    prefab = iConfig.Prefab;
+                    return true;
+                }
+            }
+
+            prefab = null;
+            return false;
+        }
+    }
+}
+
+
+
+
+// ===== ScreenSwitcher.cs =====
+using System;
+using System.Collections.Generic;
+using UI.Components.Screens;
+using UI.Core;
+
+namespace UI.Services {
+
+    public sealed class ScreenSwitcher {
+        private readonly UIManager _uiManager;
+        private readonly Stack<UIScreenType> _screenHistory = new();
+
+        public ScreenSwitcher(UIManager uiManager) {
+            _uiManager = uiManager;
+        }
+
+        public void AddToHistory(UIScreenType screenType) {
+
+            if (_screenHistory.Contains(screenType) == false)
+                _screenHistory.Push(screenType);
+        }
+
+        public void RemoveFromHistory(UIScreenType screenType) {
+            var tempStack = new Stack<UIScreenType>();
+
+            while (_screenHistory.Count > 0) {
+                var screen = _screenHistory.Pop();
+
+                if (screen != screenType)
+                    tempStack.Push(screen);
+            }
+
+            while (tempStack.Count > 0) {
+                _screenHistory.Push(tempStack.Pop());
+            }
+        }
+
+        public bool TryGetCurrentScreen(out UIScreenType screenType) {
+            
+            if (_screenHistory.Count > 0 && _uiManager.IsScreenAvailable(_screenHistory.Peek())) {
+                screenType = _screenHistory.Peek();
+                return true;
+            }
+
+            screenType = default;
+            return false;
+        }
+
+        public bool TryShowPreviousScreen(out UIScreenType? screen) {
+
+            if (_screenHistory.Count == 0) {
+                screen = null;
+                return false;
+            }
+
+            var current = _screenHistory.Pop();
+
+            while (_screenHistory.Count > 0) {
+                var candidate = _screenHistory.Pop();
+
+                if (_uiManager.IsScreenAvailable(candidate) == true) {
+                    _screenHistory.Push(candidate);
+
+                    screen = candidate;
+                    return true;
+                }
+            }
+
+            _screenHistory.Push(current);
+
+            screen = current;
+            return false;
+        }
+
+        public void ClearHistory() {
+            _screenHistory.Clear();
+        }
+    }
+}
+
+
+
+
+// ===== UILayer.cs =====
+namespace UI.Core {
+
+    public enum UILayer {
+        Background = 0,
+        Main = 100,
+        Overlay = 200,
+        Modal = 300,
+        Loading = 400,
+        System = 500
+    }
+}
+
+
+
+
+// ===== UIManager.cs =====
+using R3;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Zenject;
+using UnityEngine;
+using SceneManagementSystem;
+using Cysharp.Threading.Tasks;
+using UI.Components.Screens;
+using UI.Services;
+using UI.Components;
+
+namespace UI.Core {
+
+    public sealed class UIManager : MonoBehaviour {
+        public ReadOnlyReactiveProperty<UIScreenType> ScreenOpened => _screenOpened;
+        public ReadOnlyReactiveProperty<UIScreenType> ScreenClosed => _screenClosed;
+
+        [SerializeField] private Transform[] _layerContainers;
+
+        private readonly Dictionary<UIScreenType, UIScreenConfig> _configs = new();
+        private readonly Dictionary<UIScreenType, UIComponent> _activeScreens = new();
+
+        private ReactiveProperty<UIScreenType> _screenOpened = new();
+        private ReactiveProperty<UIScreenType> _screenClosed = new();
+
+        private ScreenFactory _screenFactory;
+        private ScreenSwitcher _screenSwitcher;
+        private UIScreenConfigs _screenConfigs;
+        private bool _isInitialized;
+
+        [Inject]
+        public void Construct(UIScreenConfigs screenConfigs) {
+            _screenConfigs = screenConfigs;
+            _screenFactory = new ScreenFactory(_screenConfigs);
+            _screenSwitcher = new ScreenSwitcher(this);
+
+            _screenClosed = new();
+
+            InitializeConfigs();
+        }
+
+        public async UniTask<T> ShowScreenAsync<T>(UIScreenType screenType, bool addToHistory = true, bool animated = true) where T : UIComponent {
+            var config = _configs[screenType];
+
+            if (config.AllowMultipleInstances == false)
+                await HideScreensOnLayer(config.Layer, animated);
+
+            if (_activeScreens.TryGetValue(screenType, out var activeScreen) == true) {
+                await activeScreen.ShowAsync(animated);
+                return activeScreen as T;
+            }
+
+            var parent = _layerContainers[(int)config.Layer / 100];
+            var screen = _screenFactory.CreateScreen<T>(screenType, parent);
+
+            await screen.ShowAsync(animated);
+
+            _activeScreens[screenType] = screen;
+
+            if (addToHistory == true)
+                _screenSwitcher.AddToHistory(screenType);
+            
+            _screenOpened.Value = screenType;
+            
+            return screen;
+        }
+
+        public async UniTask HideScreenAsync(UIScreenType screenType, bool animated = true) {
+
+            if (_activeScreens.TryGetValue(screenType, out var screen)) {
+                await screen.HideAsync(animated);
+
+                var config = _configs[screenType];
+
+                if (config.DestroyOnHide == true) {
+                    _activeScreens.Remove(screenType);    
+                    Destroy(screen.gameObject);
+                } 
+                
+                _screenSwitcher.RemoveFromHistory(screenType);
+                _screenClosed.Value = screenType;
+            }
+        }
+
+        public T GetActiveScreen<T>(UIScreenType screenType) where T : UIComponent {
+            return _activeScreens.TryGetValue(screenType, out var screen) ? screen as T : null;
+        }
+
+        public async UniTask ShowPreviousScreenAsync(bool animated = true) {
+
+            if (_screenSwitcher.TryGetCurrentScreen(out var activeScreen) == true)
+                await HideScreenAsync(activeScreen);
+
+            if (_screenSwitcher.TryShowPreviousScreen(out var previousScreenType) == false)
+                return;
+
+            if (previousScreenType.HasValue == true) {
+                var config = _configs[previousScreenType.Value];
+                
+                await ShowScreenAsync<UIComponent>(previousScreenType.Value, addToHistory: false, animated: animated);
+                return;
+            }
+
+            Debug.LogWarning("No previous screen in history");
+        }
+
+        public bool IsScreenAvailable(UIScreenType screenType) {
+
+            if (_configs.TryGetValue(screenType, out var config) == false) {
+                Debug.LogWarning($"No config found for screen type: {screenType}");
+                return false;
+            }
+
+            if (_activeScreens.ContainsKey(screenType) == true) {
+                Debug.Log($"Screen {screenType} is already active");
+                return false;
+            }
+
+            return true;
+        }
+
+        public async UniTask RestartGame() {
+            var screensToHide = _activeScreens.Keys.ToList();
+
+            foreach (var iScreenType in screensToHide) {
+                await HideScreenAsync(iScreenType, false);
+            }
+
+            _screenSwitcher.ClearHistory();
+        }
+
+        private void InitializeConfigs() {
+
+            foreach (var config in _screenConfigs.Configs) {
+                _configs[config.ScreenType] = config;
+            }
+
+            if (_layerContainers == null || _layerContainers.Length == 0)
+                CreateLayerContainers();
+
+            _isInitialized = true;
+        }
+
+        private void CreateLayerContainers() {
+            var layerCount = Enum.GetValues(typeof(UILayer)).Length;
+            _layerContainers = new Transform[layerCount];
+
+            foreach (UILayer layer in Enum.GetValues(typeof(UILayer))) {
+                var layerObject = new GameObject($"Layer_{layer}");
+                layerObject.transform.SetParent(transform);
+
+                var canvas = layerObject.AddComponent<Canvas>();
+                canvas.sortingOrder = (int)layer;
+                canvas.overrideSorting = true;
+
+                _layerContainers[(int)layer / 100] = layerObject.transform;
+            }
+        }
+
+        private async UniTask HideScreensOnLayer(UILayer layer, bool animated) {
+            var screensToHide = _activeScreens
+                .Where(kvp => _configs[kvp.Key].Layer == layer)
+                .ToList();
+
+            var hideTasks = screensToHide.Select(kvp => HideScreenAsync(kvp.Key, animated));
+            await UniTask.WhenAll(hideTasks);
+        }
+    }
+}
+
+
+
+
+// ===== Entity.cs =====
+using EventBusService;
+using System;
+using System.Collections.Generic;
+
+namespace BattleSystem {
+
+    public sealed class Entity : IDisposable {
+        public int Id { get; }
+
+        private readonly Dictionary<Type, IComponent> _components = new();
+
+        public Entity(int id) {
+            Id = id;
+        }
+
+        public void AddComponent<T>(T component) where T : IComponent {
+            _components[typeof(T)] = component;
+        }
+
+        public T GetComponent<T>() where T : IComponent {
+            return _components.ContainsKey(typeof(T)) ? (T)_components[typeof(T)] : default;
+        }
+
+        public void UpdateComponent<T>(T component) where T : IComponent {
+            _components[typeof(T)] = component;
+        }
+
+        public bool HasComponent<T>() where T : IComponent {
+            return _components.ContainsKey(typeof(T));
+        }
+
+        public void RemoveComponent<T>() where T : IComponent {
+            _components.Remove(typeof(T));
+        }
+
+        public void Dispose() {
+            _components.Clear();
+        }
+    }
+}
+
+
+
+// ===== EntityExtensions.cs =====
+using BattleSystem;
+
+namespace GameSystemServices {
+    public static class EntityExtensions {
+        
+        public static bool IsAlive(this Entity entity) {
+            return entity.GetComponent<HealthComponent>().CurrentHealth > 0;
+        }
+
+        public static bool IsFrozen(this Entity entity) {
+            return entity.HasComponent<FrozenComponent>() == true;
+        }
+
+        public static void ReduceFreezeTurns(this Entity entity) {
+            var frozen = entity.GetComponent<FrozenComponent>();
+            frozen.TurnsRemaining--;
+
+            if (frozen.TurnsRemaining <= 0)
+                entity.RemoveComponent<FrozenComponent>();
+            else
+                entity.UpdateComponent(frozen);
+        }
+
+        public static bool IsRedTeam(this Entity entity) {
+            return entity.GetComponent<PlayerComponent>().PlayerType == PlayerType.Red;
+        }
+
+        public static bool IsBlueTeam(this Entity entity) {
+            return entity.GetComponent<PlayerComponent>().PlayerType == PlayerType.Blue;
+        }
+
+        public static HeroType GetHeroType(this Entity entity) {
+            return entity.GetComponent<HeroTypeComponent>().Type;
+        }
+
+        public static int GetAttackPower(this Entity entity) {
+
+            if (entity == null)
+                return 0;
+
+            return entity.GetComponent<AttackComponent>().AttackPower;
+        }
+
+        public static PlayerType GetTeam(this Entity entity) {
+            return entity.GetComponent<PlayerComponent>().PlayerType;
+        }
+    }
+}
+
+
+
+// ===== EntityFactory.cs =====
+using EventBusService;
+using System;
+using System.Collections.Generic;
+
+namespace BattleSystem {
+
+    public sealed class EntityFactory {
+        private readonly Dictionary<HeroType, HeroStats> _heroStats = new() {
+            { HeroType.Devourer, new HeroStats(50, 3) },
+            { HeroType.Huntress, new HeroStats(25, 10) },
+            { HeroType.StupidOrc, new HeroStats(32, 8) },
+            { HeroType.LordVamp, new HeroStats(22, 6) },
+            { HeroType.Paladin, new HeroStats(30, 30) },
+            { HeroType.IceMage, new HeroStats(50, 2) },
+            { HeroType.Meditator, new HeroStats(25, 4) },
+            { HeroType.Electro, new HeroStats(35, 7) }
+        };
+
+        private int _nextId = 0;
+
+        public Entity CreateHero(HeroType heroType, PlayerType playerType, int viewIndex) {
+
+            if (_heroStats.TryGetValue(heroType, out var stats) == false)
+                throw new ArgumentException($"No stats defined for hero type: {heroType}");
+
+            var entity = new Entity(_nextId++);
+
+            entity.AddComponent(new PlayerComponent(playerType));
+            entity.AddComponent(new HeroTypeComponent(heroType));
+            entity.AddComponent(new ViewIndexComponent(viewIndex));
+            entity.AddComponent(new HealthComponent(stats.Health));
+            entity.AddComponent(new AttackComponent(stats.AttackPower)); // Теперь используется AttackPower
+
+            if (heroType == HeroType.Paladin)
+                entity.AddComponent(new DivineShieldComponent(true));
+
+            return entity;
+        }
+
+        public void ResetIdCounter() {
+            _nextId = 0;
+        }
+    }
+}
+
+
+
+// ===== IComponent.cs =====
+namespace BattleSystem {
+    // ===== COMPONENTS =====
+
+    public interface IComponent { }
+
+    public struct HealthComponent : IComponent {
+        public int CurrentHealth;
+        public int MaxHealth;
+
+        public HealthComponent(int health) {
+            CurrentHealth = health;
+            MaxHealth = health;
+        }
+    }
+
+    public struct AttackComponent : IComponent {
+        public int AttackPower;
+
+        public AttackComponent(int attack) {
+            AttackPower = attack;
+        }
+    }
+
+    public struct PlayerComponent : IComponent {
+        public PlayerType PlayerType;
+
+        public PlayerComponent(PlayerType playerType) {
+            PlayerType = playerType;
+        }
+    }
+
+    public struct HeroTypeComponent : IComponent {
+        public HeroType Type;
+
+        public HeroTypeComponent(HeroType type) {
+            Type = type;
+        }
+    }
+
+    public struct FrozenComponent : IComponent {
+        public int TurnsRemaining;
+
+        public FrozenComponent(int turns) {
+            TurnsRemaining = turns;
+        }
+    }
+
+    public struct DivineShieldComponent : IComponent {
+        public bool IsActive;
+
+        public DivineShieldComponent(bool active) {
+            IsActive = active;
+        }
+    }
+
+    public struct ViewIndexComponent : IComponent {
+        public int Index;
+
+        public ViewIndexComponent(int index) {
+            Index = index;
+        }
+    }
+}
+
+
+
+// ===== AnimationTask.cs =====
+using Cysharp.Threading.Tasks;
+using System;
+
+namespace BattleSystem {
+    public struct AnimationTask {
+        public Func<UniTask> Action;
+        public int Priority;
+
+        public AnimationTask(Func<UniTask> action, int priority) {
+            Action = action;
+            Priority = priority;
+        }
+    }
+}
+
+
+
+// ===== DeathAnimationSettings.cs =====
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+
+namespace BattleSystem {
+
+    [CreateAssetMenu(
+        fileName = nameof(DeathAnimationSettings),
+        menuName = "BattleSystem/" + nameof(DeathAnimationSettings)
+    )]
+    public partial class DeathAnimationSettings : ScriptableObject {
+        [Header("Animation Settings")]
+        [field: SerializeField] public float ShakeDuration { get; private set; } = 0.5f;
+        [field: SerializeField] public float ShakeStrength { get; private set; } = 10f;
+        [field: SerializeField] public int ShakeVibrato { get; private set; } = 10;
+        [field: SerializeField] public float FadeDuration { get; private set; } = 0.7f;
+        [field: SerializeField] public float ScaleDownMultiplier { get; private set; } = 0.8f;
+
+        [Header("Effects Settings")]
+        [field: SerializeField] public List<EffectPair> Effects { get; private set; } = new();
+        [field: SerializeField] public Sprite DeathIcon { get; private set; }
+
+        public Dictionary<HeroType, GameObject> GetEffectsDictionary() {
+            var dict = new Dictionary<HeroType, GameObject>();
+
+            foreach (var effect in Effects) {
+                dict[effect.HeroType] = effect.EffectPrefab;
+            }
+
+            return dict;
+        }
+
+        public bool TryGetEffect(HeroType heroType, out GameObject effectPrefab) {
+
+            for (int i = 0; i < Effects.Count; i++) {
+                EffectPair iEffectPair = Effects[i];
+
+                if (iEffectPair.HeroType == heroType) {
+                    effectPrefab = iEffectPair.EffectPrefab;
+                    return true;
+                }
+            }
+
+            effectPrefab = null;
+            return false;
+        }
+    }
+}
+
+
+
+// ===== DeathEffect.cs =====
+using System;
+using UnityEngine;
+
+namespace BattleSystem {
+    [Serializable]
+    public sealed class DeathEffect {
+        public HeroType HeroType;
+        public GameObject EffectPrefab;
+    }
+}
+
+
+
+// ===== EffectPair.cs =====
+using UnityEngine;
+using System;
+
+namespace BattleSystem {
+
+    [Serializable]
+    public sealed class EffectPair {
+        public HeroType HeroType;
+        public GameObject EffectPrefab;
+    }
+}
+
+
+
+// ===== HeroIconPair.cs =====
+using System;
+using UnityEngine;
+
+namespace BattleSystem {
+
+    [Serializable]
+    public sealed class HeroIconPair {
+        public HeroType heroType;
+        public Sprite icon;
+    }
+}
+
+
+
+// ===== HeroIconsConfiguration.cs =====
+using UnityEngine;
+
+namespace BattleSystem {
+    [CreateAssetMenu(
+        fileName = nameof(HeroIconsConfiguration),
+        menuName = "BattleSystem/" + nameof(HeroIconsConfiguration)
+    )]
+    public sealed class HeroIconsConfiguration : ScriptableObject {
+ 
+        [SerializeField] private HeroIconPair[] _heroIcons;
+
+        public Sprite GetIcon(HeroType heroType) {
+            
+            foreach (var pair in _heroIcons) {
+                
+                if (pair.heroType == heroType) {
+                    return pair.icon;
+                }
+            }
+
+            Debug.LogWarning($"No icon found for hero type: {heroType}");
+            return null;
+        }
+    }
+}
+
+
+
+// ===== ViewSystem.cs =====
+using Cysharp.Threading.Tasks;
+using EventBusService;
+using GameSystemServices;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using UI;
+using UnityEngine;
+
+namespace BattleSystem {
+
+    public sealed class ViewSystem : IGameSystem {
+        private const string HEART = "<sprite index=0>";
+        private const string SWORD = "<sprite index=1>";
+
+        private readonly IEventBus _eventBus;
+        private readonly HeroesProvider _heroes;
+        private readonly TurnSystem _turnSystem;
+        private readonly HeroIconsConfiguration _iconsConfig;
+        private readonly UIService _uiService;
+        private readonly Queue<Func<UniTask>> _animationQueue = new();
+        private readonly Dictionary<int, HeroView> _heroViews = new();
+        private readonly Dictionary<int, bool> _deathAnimationsInProgress = new();
+
+        private bool _isProcessingAnimations = false;
+
+        private IReadOnlyList<Entity> Entities => _heroes.GetEntities();
+        private HeroListView RedPlayer => _uiService.GetRedPlayer();
+        private HeroListView BluePlayer => _uiService.GetBluePlayer();
+
+        public ViewSystem(
+            IEventBus eventBus,
+            HeroesProvider heroes,
+            TurnSystem turnSystem,
+            HeroIconsConfiguration iconsConfig,
+            UIService uiService) {
+
+            _eventBus = eventBus;
+            _heroes = heroes;
+            _turnSystem = turnSystem;
+            _iconsConfig = iconsConfig;
+            _uiService = uiService;
+        }
+
+        public void OnInitializeGame() {
+            _eventBus.Subscribe<TurnStartedEvent>(OnTurnStarted);
+            _eventBus.Subscribe<HealthChangedEvent>(OnHealthChanged);
+            _eventBus.Subscribe<AttackEvent>(OnAttackEvent);
+            _eventBus.Subscribe<DeathAnimationCompleteEvent>(OnDeathAnimationComplete);
+
+            InitializeViews();
+            SetupClickHandlers();
+        }
+
+        public void OnFinishGame() {
+            _eventBus.Unsubscribe<TurnStartedEvent>(OnTurnStarted);
+            _eventBus.Unsubscribe<HealthChangedEvent>(OnHealthChanged);
+            _eventBus.Unsubscribe<AttackEvent>(OnAttackEvent);
+            _eventBus.Unsubscribe<DeathAnimationCompleteEvent>(OnDeathAnimationComplete);
+        }
+
+        public void OnRestartGame() {
+            OnFinishGame();
+
+            _animationQueue.Clear();
+            _heroViews.Clear();
+            _deathAnimationsInProgress.Clear();
+            _isProcessingAnimations = false;
+
+            RedPlayer.OnHeroClicked -= OnHeroClicked;
+            foreach (var iView in RedPlayer.GetViews()) {
+                iView.gameObject.SetActive(true);
+            }
+
+            BluePlayer.OnHeroClicked -= OnHeroClicked;
+            foreach (var iView in BluePlayer.GetViews()) {
+                iView.gameObject.SetActive(true);
+            }
+
+        }
+
+        private void InitializeViews() {
+
+            foreach (var entity in Entities) {
+                var playerType = entity.GetComponent<PlayerComponent>().PlayerType;
+                var heroType = entity.GetComponent<HeroTypeComponent>().Type;
+                var viewIndex = entity.GetComponent<ViewIndexComponent>().Index;
+                var health = entity.GetComponent<HealthComponent>().CurrentHealth;
+                var attack = entity.GetComponent<AttackComponent>().AttackPower;
+
+                if (TryGetHeroViewByIndex(playerType, viewIndex, out HeroView heroView) == false)
+                    return;
+
+                var icon = GetHeroIcon(heroType);
+
+                if (icon != null)
+                    heroView.SetIcon(icon);
+
+                heroView.SetStats($"{SWORD} {attack} / {HEART} {health}");
+            }
+        }
+
+        private bool TryGetHeroViewByIndex(PlayerType type, int index, out HeroView heroView) {
+            var listView = type == PlayerType.Red ? RedPlayer : BluePlayer;
+            var view = listView.GetView(index);
+
+            if (view == null) {
+                heroView = default;
+                return false;
+            }
+
+            heroView = view;
+            return true;
+        }
+
+        private Sprite GetHeroIcon(HeroType heroType) {
+            return _iconsConfig.GetIcon(heroType);
+        }
+
+        private void SetupClickHandlers() {
+            RedPlayer.OnHeroClicked += OnHeroClicked;
+            BluePlayer.OnHeroClicked += OnHeroClicked;
+        }
+
+        private void OnHeroClicked(HeroView heroView) {
+            var currentHero = _turnSystem.GetCurrentHero();
+
+            if (currentHero == null)
+                return;
+
+            if (TryGetEntityByHeroView(heroView, out var targetEntity) == false)
+                return;
+
+            var targetHealth = targetEntity.GetComponent<HealthComponent>();
+            var targetPlayer = targetEntity.GetComponent<PlayerComponent>().PlayerType;
+            var currentPlayer = currentHero.GetComponent<PlayerComponent>().PlayerType;
+
+            if (targetHealth.CurrentHealth <= 0 || targetPlayer == currentPlayer)
+                return;
+
+            _eventBus.Publish(new AttackEvent(currentHero.Id, targetEntity.Id));
+        }
+
+        private void OnTurnStarted(TurnStartedEvent turnEvent) {
+
+            foreach (var entity in Entities) {
+
+                if (TryGetHeroViewByEntity(entity, out var heroView) == true)
+                    heroView.SetActive(entity.Id == turnEvent.HeroId);
+            }
+
+            if (_heroes.TryGetEntityById(turnEvent.HeroId, out var currentHero) == false)
+                return;
+
+            var activePlayerType = currentHero.GetComponent<PlayerComponent>().PlayerType;
+            RedPlayer.SetActive(activePlayerType == PlayerType.Red);
+            BluePlayer.SetActive(activePlayerType == PlayerType.Blue);
+        }
+
+        private void OnHealthChanged(HealthChangedEvent healthEvent) {
+
+            if (_heroes.TryGetEntityById(healthEvent.HeroId, out var entity) == false)
+                return;
+
+            if (TryGetHeroViewByEntity(entity, out var heroView) == false)
+                return;
+
+            var heroId = healthEvent.HeroId;
+            var health = healthEvent.NewHealth;
+            var attack = entity.GetComponent<AttackComponent>().AttackPower;
+            var type = entity.GetComponent<HeroTypeComponent>().Type;
+
+            if (health <= 0 && heroView != null) {
+                heroView.SetStats($"WASTED");
+                _eventBus.Publish(new HeroDeathAnimationEvent(heroId, heroView, type));
+                return;
+            }
+
+            heroView.SetStats($"{SWORD} {attack} / {HEART} {health}");
+        }
+
+        private void OnAttackEvent(AttackEvent attackEvent) {
+            EnqueueAnimation(async () => {
+                // Получаем участников боя
+                if (_heroes.TryGetEntityById(attackEvent.AttackerId, out var attacker) == false ||
+                    TryGetHeroViewByEntity(attacker, out var attackerView) == false ||
+                    _heroes.TryGetEntityById(attackEvent.TargetId, out var target) == false ||
+                    TryGetHeroViewByEntity(target, out var targetView) == false) {
+                    return;
+                }
+
+                await attackerView.AnimateAttack(targetView);
+                _eventBus.Publish(new AttackAnimationCompleteEvent());
+
+                var targetHealth = target.GetComponent<HealthComponent>();
+
+                if (targetHealth.CurrentHealth <= 0) {
+                    _deathAnimationsInProgress[target.Id] = true;
+
+                    await UniTask.WaitUntil(() => _deathAnimationsInProgress.ContainsKey(target.Id) == false);
+                }
+
+                _eventBus.Publish(new ReadyForNextTurnEvent());
+            });
+        }
+
+        private void OnDeathAnimationComplete(DeathAnimationCompleteEvent evt) {
+            _deathAnimationsInProgress.Remove(evt.HeroId);
+        }
+
+        private bool TryGetEntityByHeroView(HeroView heroView, out Entity entity) {
+            var redViews = RedPlayer.GetViews();
+            var blueViews = BluePlayer.GetViews();
+
+            Entity findedEntity;
+
+            for (int i = 0; i < redViews.Count; i++) {
+
+                if (redViews[i] == heroView) {
+
+                    findedEntity = Entities.FirstOrDefault(e =>
+                        e.GetComponent<PlayerComponent>().PlayerType == PlayerType.Red &&
+                        e.GetComponent<ViewIndexComponent>().Index == i);
+
+                    if (findedEntity != null) {
+                        entity = findedEntity;
+                        return true;
+                    }
+                }
+            }
+
+            for (int i = 0; i < blueViews.Count; i++) {
+
+                if (blueViews[i] == heroView) {
+
+                    findedEntity = Entities.FirstOrDefault(e =>
+                        e.GetComponent<PlayerComponent>().PlayerType == PlayerType.Blue &&
+                        e.GetComponent<ViewIndexComponent>().Index == i);
+
+                    if (findedEntity != null) {
+                        entity = findedEntity;
+                        return true;
+                    }
+                }
+            }
+
+            entity = default;
+            return false;
+        }
+
+        private bool TryGetHeroViewByEntity(Entity entity, out HeroView heroView) {
+            var playerType = entity.GetComponent<PlayerComponent>().PlayerType;
+            var viewIndex = entity.GetComponent<ViewIndexComponent>().Index;
+
+            var listView = playerType == PlayerType.Red ? RedPlayer : BluePlayer;
+            HeroView findedView = listView.GetView(viewIndex);
+
+            if (findedView != null) {
+                heroView = findedView;
+                return true;
+            }
+
+            heroView = default;
+            return false;
+        }
+
+        private void EnqueueAnimation(Func<UniTask> animation) {
+            _animationQueue.Enqueue(animation);
+
+            if (_isProcessingAnimations == false)
+                ProcessAnimationQueue();
+        }
+
+        private async void ProcessAnimationQueue() {
+            _isProcessingAnimations = true;
+
+            while (_animationQueue.Count > 0) {
+                var animation = _animationQueue.Dequeue();
+                await animation();
+            }
+
+            _isProcessingAnimations = false;
+        }
+    }
+}
+
+
+
+// ===== AudioPlayer.cs =====
+using UnityEngine;
+
+//Менять нельзя!
+public sealed class AudioPlayer : MonoBehaviour {
+    public static AudioPlayer Instance { get; private set; }
+
+    [SerializeField] private AudioSource _soundSource;
+
+    private void Awake() {
+        Instance = this;
+    }
+
+    public void PlaySound(AudioClip sound) {
+        _soundSource.PlayOneShot(sound);
+    }
+}
+
+
+
+
+// ===== AudioSystem.cs =====
+using BattleSystem;
+using EventBusService;
+using Random = UnityEngine.Random;
+
+namespace GameSystemServices {
+
+    public sealed class AudioSystem : IGameSystem {
+        private readonly IEventBus _eventBus;
+        private readonly HeroesProvider _heroes;
+        private readonly HeroAudioConfiguration _audioConfig;
+        private readonly AudioPlayer _audioPlayer;
+
+        public AudioSystem(IEventBus eventBus,
+                           HeroesProvider heroes,
+                           HeroAudioConfiguration audioConfig,
+                           AudioPlayer audioPlayer) {
+
+            _eventBus = eventBus;
+            _heroes = heroes;
+            _audioConfig = audioConfig;
+            _audioPlayer = audioPlayer;
+        }
+        public void OnInitializeGame() {
+            _eventBus.Subscribe<TurnStartedEvent>(OnTurnStarted);
+            _eventBus.Subscribe<HealthChangedEvent>(OnHealthChanged);
+            _eventBus.Subscribe<AbilityUsedEvent>(OnAbilityUsed);
+            _eventBus.Subscribe<HeroDeathEvent>(OnHeroDeath);
+        }
+
+        public void OnFinishGame() {
+            _eventBus.Unsubscribe<TurnStartedEvent>(OnTurnStarted);
+            _eventBus.Unsubscribe<HealthChangedEvent>(OnHealthChanged);
+            _eventBus.Unsubscribe<AbilityUsedEvent>(OnAbilityUsed);
+            _eventBus.Unsubscribe<HeroDeathEvent>(OnHeroDeath);
+        }
+
+        public void OnRestartGame() { }
+        
+        private void OnTurnStarted(TurnStartedEvent turnEvent) {
+
+            if (TryGetHeroAudioClipsTypeById(turnEvent.HeroId, out HeroAudioClips audioClips) == false)
+                return;
+
+            if (audioClips?.startTurnClips != null && audioClips.startTurnClips.Length > 0) {
+                var randomClip = audioClips.startTurnClips[Random.Range(0, audioClips.startTurnClips.Length)];
+                _audioPlayer.PlaySound(randomClip);
+            }
+        }
+
+        private void OnHealthChanged(HealthChangedEvent evt) {
+
+            if (_heroes.TryGetEntityById(evt.HeroId, out var hero) == false)
+                return;
+
+            // Check if health is below 20%
+            float healthPercentage = (float)evt.NewHealth / evt.MaxHealth;
+
+            if (healthPercentage < 0.2f && healthPercentage > 0f) {
+                var heroType = hero.GetComponent<HeroTypeComponent>().Type;
+                var audioClips = _audioConfig.GetClips(heroType);
+
+                if (audioClips?.lowHealthClip != null)
+                    _audioPlayer.PlaySound(audioClips.lowHealthClip);
+            }
+        }
+
+        private void OnAbilityUsed(AbilityUsedEvent abilityEvent) {
+
+            if (TryGetHeroAudioClipsTypeById(abilityEvent.HeroId, out HeroAudioClips audioClips) == false)
+                return;
+
+            if (audioClips?.abilityClip != null)
+                _audioPlayer.PlaySound(audioClips.abilityClip);
+        }
+
+        private void OnHeroDeath(HeroDeathEvent deathEvent) {
+
+            if (TryGetHeroAudioClipsTypeById(deathEvent.HeroId, out HeroAudioClips audioClips) == false)
+                return;
+
+            if (audioClips?.deathClip != null)
+                _audioPlayer.PlaySound(audioClips.deathClip);
+        }
+
+        private bool TryGetHeroAudioClipsTypeById(int heroId, out HeroAudioClips clips) {
+
+            if (_heroes.TryGetEntityById(heroId, out var hero) == false) {
+                clips = default;
+                return false;
+            }
+
+            var type = hero.GetComponent<HeroTypeComponent>().Type;
+            clips = _audioConfig.GetClips(type);
+            return true;
+        }
+    }
+}
+
+
+
+// ===== HeroAudioClips.cs =====
+using System;
+using UnityEngine;
+
+namespace BattleSystem {
+
+    [Serializable]
+    public sealed class HeroAudioClips {
+        public HeroType heroType;
+        public AudioClip[] startTurnClips;
+        public AudioClip lowHealthClip;
+        public AudioClip abilityClip;
+        public AudioClip deathClip;
+    }
+}
+
+
+
+// ===== HeroAudioConfiguration.cs =====
+using UnityEngine;
+
+namespace BattleSystem {
+
+    [CreateAssetMenu(
+        fileName = nameof(HeroAudioConfiguration),
+        menuName = "BattleSystem/" + nameof(HeroAudioConfiguration)
+    )]
+    public sealed class HeroAudioConfiguration : ScriptableObject {
+        [SerializeField] private HeroAudioClips[] _heroAudioClips;
+
+        public HeroAudioClips GetClips(HeroType heroType) {
+            foreach (var clips in _heroAudioClips) {
+                if (clips.heroType == heroType) {
+                    return clips;
+                }
+            }
+            Debug.LogWarning($"No audio clips found for hero type: {heroType}");
+            return null;
+        }
+    }
+}
+
+
+
+// ===== OperationButton.cs =====
+using R3;
+using TMPro;
+using UnityEngine;
+using System;
+using UnityEngine.UI;
+using System.Collections.Generic;
+
+namespace UI.Components {
+    
+    public sealed class OperationButton : MonoBehaviour {
+        public OperationButtonStates CurrentState { get; private set; }
+        public Observable<Unit> OperationButtonClick => _operationButton.OnClickAsObservable();
+
+        [SerializeField] private Button _operationButton;
+        [SerializeField] private Image _backgroundImage;
+        [SerializeField] private TMP_Text _labelText;
+
+        private Dictionary<OperationButtonStates, OperationButtonParameters> States = new() {
+            { OperationButtonStates.InActive, 
+              new OperationButtonParameters { 
+                  ActiveStatus = false,
+                  Text = "",
+                  BackgroundColor = Color.white} },
+            { OperationButtonStates.Play,
+              new OperationButtonParameters {
+                  ActiveStatus = true,
+                  Text = "Play",
+                  BackgroundColor = Color.green} },
+            { OperationButtonStates.Cancel,
+               new OperationButtonParameters {
+                  ActiveStatus = true,
+                  Text = "Cancel",
+                  BackgroundColor = Color.red} }
+        };
+
+        public void SetOperationButtonState(OperationButtonStates state) {
+
+            if (States.TryGetValue(state, out var currentParameters) == false)
+                throw new ArgumentException($"Invalid OperationButtonState: {state}");
+
+            CurrentState = state;
+
+            _operationButton.gameObject.SetActive(currentParameters.ActiveStatus);
+            _labelText.text = currentParameters.Text;
+            _backgroundImage.color = currentParameters.BackgroundColor;
+        }
+    }
+
+    public enum OperationButtonStates {
+        InActive = 0,
+        Play = 1,
+        Cancel = 2
+    }
+
+    public struct OperationButtonParameters {
+        public bool ActiveStatus;
+        public string Text;
+        public Color BackgroundColor;
+    }
+}
+
+
+
+// ===== UIComponent.cs =====
+using Cysharp.Threading.Tasks;
+using DG.Tweening;
+using System;
+using System.Threading;
+using UnityEngine;
+
+namespace UI.Components {
+
+    public abstract class UIComponent : MonoBehaviour {
+        public bool IsActive { get; private set; }
+        public bool IsInitialized { get; private set; }
+
+        [SerializeField] private CanvasGroup _canvasGroup;
+        [SerializeField] private float _fadeDuration = 0.3f;
+
+        private CancellationTokenSource _animationCTS;
+
+        protected virtual void Awake() {
+
+            if (_canvasGroup == null)
+                _canvasGroup = GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
+
+            _canvasGroup.alpha = 0f;
+            gameObject.SetActive(false);
+            IsActive = false;
+        }
+
+        protected virtual void OnDestroy() {
+            _animationCTS?.Cancel();
+            _animationCTS?.Dispose();
+        }
+
+        public virtual void Initialize() {
+            if (IsInitialized == true)
+                return;
+
+            OnInitialize();
+            IsInitialized = true;
+        }
+
+        protected virtual void OnInitialize() { }
+
+        public virtual async UniTask ShowAsync(bool animated = true) {
+            
+            if (IsActive == true)
+                return;
+
+            _animationCTS?.Cancel();
+            _animationCTS = new CancellationTokenSource();
+
+            IsActive = true;
+            gameObject.SetActive(true);
+
+            if (animated && _canvasGroup != null) {
+                _canvasGroup.alpha = 0f;
+                await _canvasGroup.DOFade(1f, _fadeDuration)
+                    .SetEase(Ease.OutQuad)
+                    .AsyncWaitForCompletion() 
+                    .AsUniTask() 
+                    .AttachExternalCancellation(_animationCTS.Token); 
+            } else if (_canvasGroup != null) {
+                _canvasGroup.alpha = 1f;
+            }
+
+            OnShown();
+        }
+
+        public virtual async UniTask HideAsync(bool animated = true) {
+            
+            if (IsActive == false)
+                return;
+
+            OnHiding();
+
+            _animationCTS?.Cancel();
+            _animationCTS = new CancellationTokenSource();
+
+            if (animated && _canvasGroup != null) {
+                await _canvasGroup.DOFade(0f, _fadeDuration)
+                    .SetEase(Ease.InQuad)
+                    .AsyncWaitForCompletion()
+                    .AsUniTask()
+                    .AttachExternalCancellation(cancellationToken: _animationCTS.Token);
+            }
+
+            IsActive = false;
+            gameObject.SetActive(false);
+            OnHidden();
+        }
+
+        protected virtual void OnShown() { }
+        protected virtual void OnHiding() { }
+        protected virtual void OnHidden() { }
+    }
+}
+
+
+
+
+// ===== UISystemInstaller.cs =====
+using System;
+using UI.Components.Screens;
+using UI.Services.Observers;
+using UnityEngine;
+using Zenject;
+
+namespace UI.Core {
+
+    public class UISystemInstaller : MonoInstaller {
+        [SerializeField] private UIManager _uiManagerPrefab;
+        [SerializeField] private UIScreenConfigs _screenConfigs;
+
+        public override void InstallBindings() {
+            BindUIManager();
+            BindUIScreenObservers();
+        }
+
+        private void BindUIManager() {
+            Container.BindInstance(_screenConfigs)
+                    .AsSingle();
+
+            var instance = Container.InstantiatePrefabForComponent<UIManager>(_uiManagerPrefab);
+
+            Container.Bind<UIManager>()
+                     .FromInstance(instance)
+                     .AsSingle()
+                     .NonLazy();
+        }
+
+        private void BindUIScreenObservers() {
+            Container.Bind<MenuScreenObserver>()
+                .AsSingle()
+                .NonLazy();
+
+            Container.Bind<GameplayScreenObserver>()
+                .AsSingle()
+                .NonLazy();
+
+            Container.Bind<PauseScreenObserver>()
+                .AsSingle()
+                .NonLazy();
+
+            Container.Bind<GameoverScreenObserver>()
+                .AsSingle()
+                .NonLazy();
+        }
+    }
+}
+
+
+
+
+// ===== UICanvasProvider.cs =====
+using System;
+using UnityEngine;
+
+namespace UI.Core {
+    
+    public class UICanvasProvider : MonoBehaviour {
+
+        [SerializeField] private Camera _uiCamera;
+
+        public Camera UICamera => _uiCamera;
+        public Canvas Canvas { get; private set; }
+
+        private void Awake() {
+
+            var canvas = gameObject.GetComponentInChildren<Canvas>();
+
+            if (canvas == null)
+                throw new ArgumentNullException($"PersistentUI: Canvas not found!");
+
+            Canvas = canvas;
+            Canvas.worldCamera = _uiCamera;
+
+            DontDestroyOnLoad(gameObject);
+        }
+
+        public void Show() {
+            gameObject.SetActive(true);
+        }
+
+        public void Hide() {
+            gameObject.SetActive(false);
+        }
+    }
+}
+
+
+
+
+// ===== GameoverScreenObserver.cs =====
+using Cysharp.Threading.Tasks;
+using GameCycleSystem;
+using R3;
+using SceneManagementSystem;
+using UI.Components.Screens;
+using UI.Core;
+using UnityEngine;
+
+namespace UI.Services.Observers {
+
+    public sealed class GameoverScreenObserver : IGameFinishListener {
+        private readonly GameCycle _gameCycle;
+        private readonly UIManager _uiManager;
+        private readonly ISceneLoader _sceneLoader;
+
+        private CompositeDisposable _disposables;
+        private GameoverScreen _gameoverScreen;
+
+        public GameoverScreenObserver(GameCycle gameCycle,
+                                      UIManager uiManager,
+                                      ISceneLoader sceneLoader) {
+
+            _gameCycle = gameCycle;
+            _uiManager = uiManager;
+            _sceneLoader = sceneLoader;
+            _disposables = new();
+
+            CreateSubscribes();
+        }
+
+        private void CreateSubscribes() {
+
+            _uiManager.ScreenOpened
+                .Where(screenType => screenType == UIScreenType.GameoverScreen)
+                .Subscribe(OnGameplayScreenOpened)
+                .AddTo(_disposables);
+        }
+
+        private void OnGameplayScreenOpened(UIScreenType type) {
+            _gameoverScreen = _uiManager.GetActiveScreen<GameoverScreen>(type);
+
+            _gameoverScreen.RestartButtonClicked
+                .Subscribe(OnRestartButtonClicked)
+                .AddTo(_disposables);
+
+            _gameoverScreen.MainMenuButtonClicked
+                .Subscribe(OnMainMenuButtonClicked)
+                .AddTo(_disposables);
+        }
+
+        private void OnRestartButtonClicked(Unit _) {
+            RestartGameProcess().Forget();
+        }
+
+        private async UniTask RestartGameProcess() {
+            try {
+                await _uiManager.HideScreenAsync(UIScreenType.GameoverScreen, false);
+                
+                await UniTask.Delay(200);
+                _gameCycle.FinishGame();
+                
+                await UniTask.Delay(100);
+                _sceneLoader.LoadGame();
+            }
+            catch (System.Exception e) {
+                Debug.LogError($"Restart failed: {e.Message}");
+                _sceneLoader.LoadGame();
+            }
+        }
+
+        private void OnMainMenuButtonClicked(Unit _) {
+            _uiManager.HideScreenAsync(UIScreenType.GameoverScreen).Forget();
+            _sceneLoader.LoadMenu();
+            _gameCycle.FinishGame();
+        }
+
+        public void OnFinishGame() {
+
+            if (_disposables.IsDisposed == false)
+                _disposables.Dispose();
+
+            _gameoverScreen = null;
+        }
+    }
+}
+
+
+
+// ===== GameplayScreenObserver.cs =====
+using R3;
+using UI.Core;
+using UI.Components.Screens;
+using GameCycleSystem;
+using Cysharp.Threading.Tasks;
+
+namespace UI.Services.Observers {
+
+    public sealed class GameplayScreenObserver : IGameFinishListener {
+        private readonly GameCycle _gameCycle;
+        private readonly UIManager _uiManager;
+
+        private readonly CompositeDisposable _disposables = new();
+        private GameplayScreen _gameplayScreen;
+        private PauseScreen _pauseScreen;
+
+        public GameplayScreenObserver(GameCycle gameCycle,
+                                      UIManager uiManager) {
+
+            _gameCycle = gameCycle;
+            _uiManager = uiManager;
+
+            CreateSubscribes();
+        }
+
+        private void CreateSubscribes() {
+
+            _uiManager.ScreenOpened
+                .Where(screenType => screenType == UIScreenType.GameplayScreen)
+                .Subscribe(OnGameplayScreenOpened)
+                .AddTo(_disposables);
+
+            _uiManager.ScreenClosed
+                .Where(screenType => screenType == UIScreenType.GameplayScreen)
+                .Subscribe(OnGameplayScreenClosed)
+                .AddTo(_disposables);
+        }
+
+        private void OnGameplayScreenOpened(UIScreenType type) {
+            _gameplayScreen = _uiManager.GetActiveScreen<GameplayScreen>(type);
+
+            _gameplayScreen.PauseButtonClicked
+                .Subscribe(OnPauseButtonClicked)
+                .AddTo(_disposables);
+        }
+
+        private void OnPauseButtonClicked(Unit _) {
+            _uiManager.ShowScreenAsync<PauseScreen>(UIScreenType.PauseScreen).Forget();
+            _gameCycle.PauseGame();
+        }
+
+        private void OnGameplayScreenClosed(UIScreenType type) {
+
+            if (_gameplayScreen == null)
+                _gameplayScreen = _uiManager.GetActiveScreen<GameplayScreen>(type);
+        }
+
+        public void OnFinishGame() {
+
+            if (_disposables.IsDisposed == false)
+                _disposables.Dispose();
+
+            _gameplayScreen = null;
+            _pauseScreen = null;
+        }
+    }
+}
+
+
+
+// ===== MenuScreenObserver.cs =====
+using R3;
+using System;
+using UI.Core;
+using UI.Components.Screens;
+using Cysharp.Threading.Tasks;
+using StepByStepButler.Core;
+using SceneManagementSystem;
+
+namespace UI.Services.Observers {
+
+    public sealed class MenuScreenObserver : IDisposable {
+        private readonly UIManager _uiManager;
+        private readonly ISceneLoader _sceneLoader;
+        private readonly ApplicationExiter _exiter;
+
+        private readonly CompositeDisposable _disposables = new();
+        private MenuScreen _menuScreen;
+
+        public MenuScreenObserver(UIManager uiManager,
+                                  ISceneLoader sceneLoader,
+                                  ApplicationExiter exiter) {
+
+            _uiManager = uiManager;
+            _sceneLoader = sceneLoader;
+            _exiter = exiter;
+
+            CreateSubscribes();
+        }
+
+        private void CreateSubscribes() {
+
+            _uiManager.ScreenOpened
+                .Where(screenType => screenType == UIScreenType.MenuScreen)
+                .Subscribe(OnMenuScreenOpened)
+                .AddTo(_disposables);
+        }
+
+        private void OnMenuScreenOpened(UIScreenType type) {
+            _menuScreen = _uiManager.GetActiveScreen<MenuScreen>(type);
+
+            _menuScreen.StartButtonClicked
+                .Subscribe(OnStartButtonClicked)
+                .AddTo(_disposables);
+
+            _menuScreen.ExitButtonClicked
+                .Subscribe(OnExitButtonClicked)
+                .AddTo(_disposables);
+        }
+
+        private void OnStartButtonClicked(Unit _) {
+            _uiManager.HideScreenAsync(UIScreenType.MenuScreen).Forget();
+            _sceneLoader.LoadGame();
+            _uiManager.ShowScreenAsync<GameplayScreen>(UIScreenType.GameplayScreen).Forget();
+        }
+
+        private void OnExitButtonClicked(Unit _) {
+            _uiManager.HideScreenAsync(UIScreenType.MenuScreen).Forget();
+            _exiter.ExitApp();
+        }
+
+        public void Dispose() {
+
+            if (_disposables.IsDisposed == false)
+                _disposables.Dispose();
+        }
+    }
+}
+
+
+
+// ===== PauseScreenObserver.cs =====
+using Cysharp.Threading.Tasks;
+using GameCycleSystem;
+using R3;
+using SceneManagementSystem;
+using UI.Components.Screens;
+using UI.Core;
+using UnityEngine;
+
+namespace UI.Services.Observers {
+
+    public sealed class PauseScreenObserver : IGameFinishListener {
+        private readonly GameCycle _gameCycle;
+        private readonly UIManager _uiManager;
+        private readonly ISceneLoader _sceneLoader;
+
+        private CompositeDisposable _disposables = new();
+        private PauseScreen _pauseScreen;
+
+        public PauseScreenObserver(GameCycle gameCycle,
+                                   UIManager uiManager,
+                                   ISceneLoader sceneLoader) {
+
+            _gameCycle = gameCycle;
+            _uiManager = uiManager;
+            _sceneLoader = sceneLoader;
+
+            CreateSubscribes();
+        }
+
+        public void OnFinishGame() {
+
+            if (_disposables.IsDisposed == false)
+                _disposables.Dispose();
+
+            _pauseScreen = null;
+        }
+
+        private void CreateSubscribes() {
+
+            _uiManager.ScreenOpened
+                .Where(screenType => screenType == UIScreenType.PauseScreen)
+                .Subscribe(OnPauseScreenOpened)
+                .AddTo(_disposables);
+        }
+
+        private void OnPauseScreenOpened(UIScreenType type) {
+            _pauseScreen = _uiManager.GetActiveScreen<PauseScreen>(type);
+
+            _pauseScreen.ResumeButtonClicked
+                .Subscribe(OnResumeButtonClicked)
+                .AddTo(_disposables);
+
+            _pauseScreen.RestartButtonClicked
+                .Subscribe(OnRestartButtonClicked)
+                .AddTo(_disposables);
+
+            _pauseScreen.ExitButtonClicked
+                .Subscribe(OnExitButtonClicked)
+                .AddTo(_disposables);
+        }
+
+        private void OnResumeButtonClicked(Unit _) {
+            _uiManager.HideScreenAsync(UIScreenType.PauseScreen).Forget();
+            _gameCycle.PauseGame();
+        }
+
+        private void OnRestartButtonClicked(Unit _) {
+            RestartGameProcess().Forget();
+        }
+
+        private void OnExitButtonClicked(Unit _) {
+            _uiManager.HideScreenAsync(UIScreenType.PauseScreen).Forget();
+            _sceneLoader.LoadMenu();
+            _gameCycle.FinishGame();
+        }
+
+        private async UniTask RestartGameProcess() {
+            try {
+                _gameCycle.PauseGame();
+                _gameCycle.RestartGame();
+                await UniTask.Delay(200);
+                await _uiManager.HideScreenAsync(UIScreenType.PauseScreen, false);
+            }
+            catch (System.Exception e) {
+                Debug.LogError($"Restart failed: {e.Message}");
+                _sceneLoader.LoadGame();
+            }
+        }
+    }
+}
+
+
+
+// ===== GameoverScreen.cs =====
+using R3;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace UI.Components.Screens {
+
+    public sealed class GameoverScreen : UIComponent {
+        public const string WINNER_LABEL = "WINNER: ";
+
+        [SerializeField] private TMP_Text _winnerNameLabel;
+        [SerializeField] private Button _restart;
+        [SerializeField] private Button _mainMenu;
+
+        public Observable<Unit> RestartButtonClicked => _restart.OnClickAsObservable();
+        public Observable<Unit> MainMenuButtonClicked => _mainMenu.OnClickAsObservable();
+
+        public void UpdateWinnerLabel(string winner) {
+            _winnerNameLabel.text = $"{WINNER_LABEL} {winner}";
+        }
+    }
+}
+
+
+
+// ===== GameplayScreen.cs =====
+using R3;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace UI.Components.Screens {
+
+    public sealed class GameplayScreen : UIComponent {
+        [SerializeField] private Button _pauseButton;
+
+        public Observable<Unit> PauseButtonClicked => _pauseButton.OnClickAsObservable();
+    }
+}
+
+
+
+// ===== LoadingScreen.cs =====
+using System;
+using System.Threading;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+using Cysharp.Threading.Tasks;
+using static UnityEngine.Rendering.HDROutputUtils;
+
+namespace UI.Components.Screens {
+
+    public class LoadingScreen : UIComponent {
+        [SerializeField] private Slider _progressSlider;
+        [SerializeField] private TextMeshProUGUI _loadingText;
+        [SerializeField] private Button _cancelButton;
+        [Space, SerializeField] private float _progressSpeed = 2f;
+
+        private float _targetProgress;
+        private bool _isCancellable;
+        private CancellationTokenSource _cancelTokenSource;
+
+        public event Action CancelRequested;
+
+        protected override void OnInitialize() {
+            _cancelButton.onClick.AddListener(OnCancelClicked);
+            _cancelTokenSource = new CancellationTokenSource();
+        }
+
+        protected override async void OnShown() {
+            ResetProgress();
+            StartProgressAnimation().Forget();
+        }
+
+        protected override void OnHidden() {
+            _cancelTokenSource?.Cancel();
+        }
+
+        public void SetLoadingText(string text) {
+
+            //Debug.Log($"<color=yellow> {text} </color>");
+
+            if (_loadingText != null) 
+                _loadingText.text = text;
+        }
+
+        public void SetCancellable(bool cancellable) {
+            _isCancellable = cancellable;
+            _cancelButton.gameObject.SetActive(cancellable);
+        }
+
+        public void SetProgress(float progress) {
+            _targetProgress = Mathf.Clamp01(progress);
+        }
+
+        private async UniTaskVoid StartProgressAnimation() {
+
+            while (IsActive == true) {
+                if (_progressSlider.value < _targetProgress) {
+                    _progressSlider.value = Mathf.MoveTowards(
+                        _progressSlider.value,
+                        _targetProgress,
+                        Time.deltaTime * _progressSpeed
+                    );
+                }
+
+                await UniTask.Yield(PlayerLoopTiming.Update, _cancelTokenSource.Token);
+            }
+        }
+
+        public void ResetProgress() {
+            _progressSlider.value = 0f;
+            _targetProgress = 0f;
+        }
+
+        private void OnCancelClicked() {
+            if (_isCancellable) {
+                CancelRequested?.Invoke();
+            }
+        }
+
+        protected override void OnDestroy() {
+            _cancelTokenSource?.Dispose();
+        }
+    }
+}
+
+
+
+// ===== MenuScreen.cs =====
+using R3;
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace UI.Components.Screens {
+
+    public sealed class MenuScreen : UIComponent {
+        [SerializeField] private Button _startButton;
+        [SerializeField] private Button _exitButton;
+
+        public Observable<Unit> StartButtonClicked => _startButton.OnClickAsObservable();
+        public Observable<Unit> ExitButtonClicked => _exitButton.OnClickAsObservable();
+    }
+}
+
+
+
+// ===== PauseScreen.cs =====
+using R3;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace UI.Components.Screens {
+
+    public sealed class PauseScreen : UIComponent {
+        [SerializeField] private Button _resumeButton;
+        [SerializeField] private Button _restartButton;
+        [SerializeField] private Button _exitButton;
+
+        public Observable<Unit> ResumeButtonClicked => _resumeButton.OnClickAsObservable();
+        public Observable<Unit> RestartButtonClicked => _restartButton.OnClickAsObservable();
+        public Observable<Unit> ExitButtonClicked => _exitButton.OnClickAsObservable();
+    }
+}
+
+
+
+// ===== UIScreenConfig.cs =====
+using System;
+using UI.Core;
+using UnityEngine;
+
+namespace UI.Components.Screens {
+
+    [Serializable]
+    public class UIScreenConfig {
+        [field: SerializeField] public UIScreenType ScreenType { get; private set; }
+        [field: SerializeField] public GameObject Prefab { get; private set; }
+        [field: SerializeField] public UILayer Layer { get; private set; }
+        [field: SerializeField] public bool DestroyOnHide { get; private set; }
+        [field: SerializeField] public bool AllowMultipleInstances { get; private set; }
+
+        public UIScreenConfig(UIScreenType screenType,
+                              GameObject prefab,
+                              UILayer layer,
+                              bool destroyOnHide,
+                              bool allowMultipleInstances) {
+
+            ScreenType = screenType;
+            Prefab = prefab;
+            Layer = layer;
+            DestroyOnHide = destroyOnHide;
+            AllowMultipleInstances = allowMultipleInstances;
+        }
+    }
+}
+
+
+
+
+// ===== UIScreenConfigs.cs =====
+using UnityEngine;
+
+namespace UI.Components.Screens {
+
+    [CreateAssetMenu(
+        fileName = nameof(UIScreenConfigs),
+        menuName = "Configs/" + nameof(UIScreenConfigs)
+    )]
+    public sealed class UIScreenConfigs : ScriptableObject {
+        [field: SerializeField] public UIScreenConfig[] Configs { get; private set; }
+    }
+}
+
+
+
+
+// ===== UIScreenType.cs =====
+namespace UI.Components.Screens {
+    
+    public enum UIScreenType {
+        None,
+        MenuScreen,
+        GameplayScreen,
+        PauseScreen,
+        GameoverScreen
+    }
+}
+
+
+
+

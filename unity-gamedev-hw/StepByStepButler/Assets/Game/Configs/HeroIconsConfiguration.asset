@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 57e86e912e13be147a9d1f7f8dc93161, type: 3}
+  m_Name: HeroIconsConfiguration
+  m_EditorClassIdentifier: 
+  _heroIcons:
+  - heroType: 0
+    icon: {fileID: 21300000, guid: 313dedf7220414e3c869a853d03060bc, type: 3}
+  - heroType: 1
+    icon: {fileID: 21300000, guid: 676aec1b4f9ee4b599aeffc9a6703a1d, type: 3}
+  - heroType: 2
+    icon: {fileID: 21300000, guid: c1be5b39c416140b4a270be385402427, type: 3}
+  - heroType: 3
+    icon: {fileID: 21300000, guid: 778d4d7ee50594cd79059847cefca69a, type: 3}
+  - heroType: 4
+    icon: {fileID: 21300000, guid: 6f26327dca38144098a004666cd0e3b3, type: 3}
+  - heroType: 5
+    icon: {fileID: 21300000, guid: 2059f3310f8404adcac5457e5e772e52, type: 3}
+  - heroType: 6
+    icon: {fileID: 21300000, guid: 16ea401ccf7c8420988360f8fc9fb55d, type: 3}
+  - heroType: 7
+    icon: {fileID: 21300000, guid: f6d397e5cec894f3cbbb28a24524a3db, type: 3}
