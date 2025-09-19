@@ -1,0 +1,18 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fff54ca1e38124b41990425ef6e3dfea, type: 3}
+  m_Name: 'Step [2]'
+  m_EditorClassIdentifier: 
+  <Id>k__BackingField: 1
+  <Type>k__BackingField: 2
+  <Description>k__BackingField: Take Wood
+  <Icon>k__BackingField: {fileID: 21300000, guid: cc6ad8b3f0d7d894ca5430c7bbfb8c86, type: 3}

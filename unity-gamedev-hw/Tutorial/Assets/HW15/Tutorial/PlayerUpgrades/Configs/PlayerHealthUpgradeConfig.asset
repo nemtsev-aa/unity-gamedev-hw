@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 307514ccc24502d45841acde9a2cdf85, type: 3}
+  m_Name: PlayerHealthUpgradeConfig
+  m_EditorClassIdentifier: 
+  <Id>k__BackingField: 2
+  <MaxLevel>k__BackingField: 4
+  <Description>k__BackingField:
+    <Name>k__BackingField: Health
+    <Icon>k__BackingField: {fileID: 21300000, guid: 11f42f40fa7a4554ea1eaf9b997f7f12, type: 3}
+  <PriceTable>k__BackingField:
+    basePrice: 200
+    levels: 00000000900100005802000020030000
+  <Table>k__BackingField:
+    _startValue: 10
+    _endValue: 100
+    _step: 30
+    _table:
+    - 10
+    - 40
+    - 70
+    - 100

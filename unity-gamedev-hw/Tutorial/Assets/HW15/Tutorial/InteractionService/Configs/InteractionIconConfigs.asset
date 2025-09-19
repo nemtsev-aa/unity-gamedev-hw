@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 60cf7f5cdb6f9134988d7a14771aceef, type: 3}
+  m_Name: InteractionIconConfigs
+  m_EditorClassIdentifier: 
+  _icons:
+  - <Type>k__BackingField: 1
+    <Icon>k__BackingField: {fileID: 21300000, guid: a5bc024a46b1aa3498312758bf743c5b, type: 3}
+  - <Type>k__BackingField: 2
+    <Icon>k__BackingField: {fileID: 21300000, guid: 5065ced62a4bf644391bcbf67e234617, type: 3}
+  - <Type>k__BackingField: 3
+    <Icon>k__BackingField: {fileID: 21300000, guid: b4b2002b7dc40ec47a0f719712642751, type: 3}
+  - <Type>k__BackingField: 4
+    <Icon>k__BackingField: {fileID: 21300000, guid: 58b4aea76ec68074cbb879760434c410, type: 3}
+  - <Type>k__BackingField: 5
+    <Icon>k__BackingField: {fileID: 21300000, guid: de699be006da1f64aafb54a6b34d2ce6, type: 3}
+  - <Type>k__BackingField: 6
+    <Icon>k__BackingField: {fileID: 21300000, guid: 303f75358e847b24581a51f5b98e4470, type: 3}
+  - <Type>k__BackingField: 7
+    <Icon>k__BackingField: {fileID: 21300000, guid: 9f6f1cead08541348b08cbedaa9ce8a7, type: 3}

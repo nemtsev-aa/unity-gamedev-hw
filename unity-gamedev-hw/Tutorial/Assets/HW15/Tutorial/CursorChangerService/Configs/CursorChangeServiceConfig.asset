@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fd273f97aaa437e4ca0435af47b86d17, type: 3}
+  m_Name: CursorChangeServiceConfig
+  m_EditorClassIdentifier: 
+  <DefaultCursor>k__BackingField:
+    <Type>k__BackingField: 0
+    <Texture>k__BackingField: {fileID: 0}
+    <Hotspot>k__BackingField: {x: 0, y: 0}
+  <CursorDataList>k__BackingField:
+  - <Type>k__BackingField: 0
+    <Texture>k__BackingField: {fileID: 2800000, guid: a2025d7c5017e7c4c9f175e0d9ce9e8b, type: 3}
+    <Hotspot>k__BackingField: {x: 0, y: 0}
+  - <Type>k__BackingField: 7
+    <Texture>k__BackingField: {fileID: 2800000, guid: dcc29a3eef967be49b93126c70a0695c, type: 3}
+    <Hotspot>k__BackingField: {x: 0, y: 0}
+  - <Type>k__BackingField: 2
+    <Texture>k__BackingField: {fileID: 2800000, guid: 2bfa73dbb40012a449255fb77f892f01, type: 3}
+    <Hotspot>k__BackingField: {x: 0, y: 0}
+  - <Type>k__BackingField: 4
+    <Texture>k__BackingField: {fileID: 2800000, guid: 8cac59772f574034f9ac292baa2e3d58, type: 3}
+    <Hotspot>k__BackingField: {x: 0, y: 0}
+  - <Type>k__BackingField: 3
+    <Texture>k__BackingField: {fileID: 2800000, guid: a4ba1b9aba667be499717ebde2461f61, type: 3}
+    <Hotspot>k__BackingField: {x: 0, y: 0}
+  <RaycastDistance>k__BackingField: 100
+  <InteractableLayers>k__BackingField:
+    serializedVersion: 2
+    m_Bits: 4480
