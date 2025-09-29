@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8777164ee351864438179b99cce61d2c, type: 3}
+  m_Name: ProjectaleConfig
+  m_EditorClassIdentifier: 
+  <Prefabs>k__BackingField:
+  - <Team>k__BackingField: 0
+    <Entity>k__BackingField: {fileID: 8380462660301362011, guid: 43562ced5e7624d49992080be78d4d17, type: 3}
+  - <Team>k__BackingField: 1
+    <Entity>k__BackingField: {fileID: 8380462660301362011, guid: 783f14b6b0fbae04d877cc977c9dc0b1, type: 3}
+  <MoveSpeed>k__BackingField: 2
+  <Damage>k__BackingField: 2
